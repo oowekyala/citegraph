@@ -1,0 +1,27 @@
+digraph "Citation graph" {
+	actorsRevisited [label=<<B>Lohstroh (2019)</B><BR/>Actors Revisited for<BR/>Time-Critical<BR/>Systems> fillcolor=lightblue style=filled]
+	actorsRevisited -> hewitt1973
+	actorsRevisited -> ptolemy2014
+	actorsRevisited -> wiik2018contract
+	actorsRevisited -> geilen2012predictable
+	deterministicActors [label=<<B>Lohstroh (2019)</B><BR/>Deterministic actors> fillcolor=lightblue style=filled]
+	deterministicActors -> kahn1974
+	deterministicActors -> actorsRevisited
+	deterministicActors -> edwards2003
+	deterministicActors -> sha2009pals
+	deterministicActors -> lee2007leveraging
+	deterministicActors -> zeigler2018theory
+	deterministicActors -> zhou2008causality
+	deterministicActors -> cassandras1993
+	zhou2008causality [label=<<B>Zhou (2008)</B><BR/>Causality interfaces<BR/>for actor networks>]
+	geilen2012predictable [label=<<B>Geilen (2012)</B><BR/>Predictable dynamic<BR/>embedded data<BR/>processing>]
+	wiik2018contract [label=<<B>Wiik (2018)</B><BR/>A contract-based<BR/>approach to<BR/>scheduling and<BR/>verification of<BR/>dynamic dataflow<BR/>networks>]
+	sha2009pals [label=<<B>Sha (2009)</B><BR/>PALS: Physically<BR/>asynchronous<BR/>logically<BR/>synchronous systems>]
+	cassandras1993 [label=<<B>Cassandras (1993)</B><BR/>Discrete event<BR/>systems: modeling<BR/>and performance<BR/>analysis>]
+	zeigler2018theory [label=<<B>Zeigler (2018)</B><BR/>Theory of modeling<BR/>and simulation:<BR/>discrete event \&amp;<BR/>iterative system<BR/>computational<BR/>foundations>]
+	lee2007leveraging [label=<<B>Lee (2007)</B><BR/>Leveraging<BR/>synchronous language<BR/>principles for<BR/>heterogeneous<BR/>modeling and design<BR/>of embedded systems>]
+	edwards2003 [label=<<B>Edwards (2003)</B><BR/>The semantics and<BR/>execution of a<BR/>synchronous block-<BR/>diagram language>]
+	kahn1974 [label=<<B>Kahn (1974)</B><BR/>The semantics of a<BR/>simple language for<BR/>parallel programming> fillcolor=lightblue style=filled]
+	hewitt1973 [label=<<B>Hewitt (1973)</B><BR/>A Universal Modular<BR/>Actor Formalism for<BR/>Artificial<BR/>Intelligence. IJCAI3>]
+	ptolemy2014 [label=<<B>Ptolemaeus (2014)</B><BR/>System design,<BR/>modeling, and<BR/>simulation: using<BR/>Ptolemy II>]
+}
