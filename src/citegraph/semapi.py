@@ -3,7 +3,7 @@ from typing import NewType, List, Dict, Optional, NamedTuple
 
 import requests_cache
 
-from citegraph.model import Biblio, BibEntry
+from citegraph.model import Biblio, Paper
 
 PaperId = NewType("PaperId", str)
 """Accessible Paper Identifiers and Examples:
@@ -20,9 +20,12 @@ PaperId = NewType("PaperId", str)
 
 
 class PaperAndRefs(NamedTuple):
-    entry: BibEntry
-    references: List[PaperId]
+    paper: Paper
+    references: List[Paper]
 
+
+
+#    citations: List[StubEntry]
 
 
 class PaperDb(object):
@@ -33,14 +36,27 @@ class PaperDb(object):
 
     def __init__(self, bibdata: Biblio):
         self.bibdata = bibdata
+        self.memcache = {}
+
+
+    def fetch_or_err(self, paper_id: PaperId):
+        result = self.fetch_from_id(paper_id)
+        if not result:
+            raise AssertionError(f"Id {paper_id} is unknown")
+        return result
 
 
     def fetch_from_id(self, paper_id: PaperId) -> Optional[PaperAndRefs]:
         """Returns an entry a"""
+        if paper_id in self.memcache:
+            return self.memcache[paper_id]
+
         paper_dict: Dict = semanticscholar.paper(paper_id)
 
         if len(paper_dict.keys()) == 0:
-            return None
+            result = None
         else:
-            return PaperAndRefs(self.bibdata.make_entry(paper_dict),
-                                [ref["paperId"] for ref in paper_dict["references"]])
+            result = PaperAndRefs(paper=self.bibdata.make_entry(paper_dict),
+                                  references=[self.bibdata.make_entry(ref) for ref in paper_dict["references"]])
+        self.memcache[paper_id] = result
+        return result

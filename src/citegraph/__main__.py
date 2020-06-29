@@ -1,8 +1,9 @@
 import os, sys
 from typing import NamedTuple
 
-from citegraph.explore import *
+import citegraph.explore as explore
 from citegraph.graph import *
+from citegraph.semapi import *
 
 # Generate a citation graph from a bibtex bibliography
 
@@ -61,7 +62,11 @@ if __name__ == "__main__":
     bibdata = Biblio.from_file(args.bibfile)
     dot_builder = GraphBuilder(bibdata=bibdata)
     db = PaperDb(bibdata=bibdata)
-    build_graph(seeds=args.roots, depth=args.depth, builder=dot_builder, db=db)
+    explore.astar(seeds=[db.fetch_or_err(id).paper for id in args.roots],
+                  max_size=args.depth * 40,
+                  builder=dot_builder,
+                  weight_fun=explore.cost,
+                  db=db)
 
     if args.dotfile:
         dot_builder.render(filename=args.dotfile, render_format=DOT_FORMAT)
