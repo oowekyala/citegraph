@@ -58,8 +58,8 @@ def parse_args() -> Args:
 if __name__ == "__main__":
     args = parse_args()
     bibdata: bibtex.BibliographyData = BibParser().parse_file(args.bibfile)
-    dot_builder = semapi.DotBuilder()
-    semapi.build_graph([args.rootid], depth=args.depth, bibdata=bibdata, dot_builder=dot_builder)
+    dot_builder = semapi.DotBuilder(bibdata=bibdata)
+    semapi.build_graph([args.rootid], depth=args.depth, dot_builder=dot_builder)
     graph: g.Digraph = dot_builder.dot
     if args.dotfile:
         print("DOT saved in " + args.dotfile)

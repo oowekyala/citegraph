@@ -8,6 +8,7 @@ import requests_cache, html, textwrap
 
 # Cache requests made to semanticscholar, since they are idempotent
 # This is super important!
+SEMAPI_ID_FIELD = "semapi_id"
 requests_cache.install_cache(cache_name="semapi", backend='sqlite')
 
 PaperId = NewType("PaperId", str)
@@ -26,16 +27,48 @@ READ_BIB_KEY = "_read"
 UNKNOWN_PERSON = bibtex.Person(string="Unknown von Nowhere")
 
 
+
+def merge_fields(into: bibtex.Entry, _from: bibtex.Entry):
+    for k in _from.fields.keys():
+        if k not in into.fields:
+            into.fields[k] = _from.fields[k]
+
+
+
 class DotBuilder(object):
 
-    def __init__(self, title="Citation graph"):
+    def __init__(self, bibdata: bibtex.BibliographyData, title="Citation graph"):
         self.dot = g.Digraph(title)
+        self.bibdata = bibdata
+        self.by_norm_title: Dict[str, bibtex.Entry] = {
+            paper.fields["title"].lower(): paper for paper in bibdata.entries.itervalues()
+        }
+        self.id_to_bibkey = {}
 
 
-    def add_paper(self, paper_dict, paper_entry: bibtex.Entry):
-        (color, style) = ("lightblue", "filled") if paper_entry.fields.get(READ_BIB_KEY, "") == "true" else (None, None)
+    def get_node_attributes(self, paper_entry: bibtex.Entry, is_from_bib_file: bool):
+        attrs = {}
 
-        self.dot.node(name=paper_entry.key, label=self.make_label(paper_entry), style=style, fillcolor=color)
+        if is_from_bib_file:
+            attrs["style"] = "filled"
+
+            if paper_entry.fields.get(READ_BIB_KEY, "") == "true":
+                attrs["fillcolor"] = "lightblue"
+            else:
+                attrs["fillcolor"] = "lightyellow"
+        else:
+            attrs["style"] = "dashed"
+
+        return attrs
+
+
+    def add_paper(self, paper_entry: bibtex.Entry):
+
+        is_from_bib_file = paper_entry.fields[SEMAPI_ID_FIELD] in self.id_to_bibkey
+
+        self.dot.node(name=paper_entry.key,
+                      label=self.make_label(paper_entry),
+                      **self.get_node_attributes(paper_entry, is_from_bib_file))
 
 
     def make_label(self, entry: bibtex.Entry):
@@ -54,40 +87,51 @@ class DotBuilder(object):
         return label
 
 
-    def cite(self, src_id, src_entry: bibtex.Entry, dst_id, dst_entry: bibtex.Entry):
+    def cite(self, src_entry: bibtex.Entry, dst_entry: bibtex.Entry):
+        self.__norm_key(src_entry)
+        self.__norm_key(dst_entry)
         self.dot.edge(src_entry.key, dst_entry.key)
 
 
-
-def make_entry(paper_dict) -> bibtex.Entry:
-    fields = {
-        "title": paper_dict["title"],
-        "year": paper_dict["year"],
-    }
-
-    persons = {
-        "author": [
-            bibtex.Person(author["name"]) for author in paper_dict["authors"]
-        ]
-    }
-
-    entry = bibtex.Entry(type_="article", persons=persons, fields=fields)
-    entry.key = "a" + paper_dict["paperId"]  # add an 'a' so that it's not only numeric
-    return entry
+    def __norm_key(self, entry: bibtex.Entry):
+        entry.key = self.id_to_bibkey.get(entry.fields[SEMAPI_ID_FIELD], entry.key)
 
 
+    def make_entry(self, paper_dict) -> bibtex.Entry:
 
-def build_graph(seeds: List[PaperId], depth: int, bibdata: bibtex.BibliographyData, dot_builder: DotBuilder):
+        bibtex_entry = self.by_norm_title.get(paper_dict["title"].lower(), None)
+
+        paper_id = paper_dict["paperId"]
+
+        if bibtex_entry:  # paper is in bibtex file, prefer data from that file
+            # save mapping from ID to bibtex key
+            self.id_to_bibkey[paper_id] = bibtex_entry.key
+            print("  Found key %s in bib file" % bibtex_entry.key)
+            bibtex_entry.fields[SEMAPI_ID_FIELD] = paper_id
+            return bibtex_entry
+        else:
+            fields = {
+                "title": paper_dict["title"],
+                "year": paper_dict["year"],
+                SEMAPI_ID_FIELD: paper_id,
+            }
+
+            persons = {
+                "author": [bibtex.Person(author["name"]) for author in paper_dict["authors"]]
+            }
+
+            entry = bibtex.Entry(type_="article", persons=persons, fields=fields)
+            entry.key = paper_id
+
+            return entry
+
+
+
+def build_graph(seeds: List[PaperId], depth: int, dot_builder: DotBuilder):
     """From an initial paper id, crawl its references up to depth.
        A reference is not explored for the next depth if it is not
        contained in the entries (but it's kept in the db).
     """
-
-
-    def include(titled):
-        return [e for e in bibdata.entries.itervalues()
-                if e.fields["title"].lower() == titled["title"].lower()]
-
 
     done = set([])
     remaining = [] + seeds
@@ -95,7 +139,10 @@ def build_graph(seeds: List[PaperId], depth: int, bibdata: bibtex.BibliographyDa
 
     citations = []
 
-    while depth > 0:
+    failures = 0
+    aborted = False
+
+    while depth > 0 and not aborted:
         depth -= 1
         for paper_id in remaining:
             if paper_id in done:
@@ -103,24 +150,26 @@ def build_graph(seeds: List[PaperId], depth: int, bibdata: bibtex.BibliographyDa
 
             done.add(paper_id)
 
-            paper: Dict = semanticscholar.paper(paper_id)
-            if len(paper.keys()) == 0:
+            paper_dict: Dict = semanticscholar.paper(paper_id)
+            if len(paper_dict.keys()) == 0:
                 print("Scholar doesn't know paper with id %s" % paper_id)
+                failures += 1
+                if failures > 10:
+                    print("API limit reached, aborting")
+                    aborted = True
+                    break
                 continue
 
-            print("[paper %d] %s" % (len(done), paper["title"]))
+            print("[paper %d] %s" % (len(done), paper_dict["title"]))
 
-            # if include(paper):
-            #     print(" -> included")
             # References are explored up to the given depth even if the paper is not included
-            dot_builder.add_paper(paper, make_entry(paper))
+            paper_entry = dot_builder.make_entry(paper_dict)
+            dot_builder.add_paper(paper_entry)
 
-            for ref in paper["references"]:
+            for ref in paper_dict["references"]:
                 ref_id = ref["paperId"]
 
-                # if include(paper) and include(ref):
-                citations.append((make_entry(paper), make_entry(ref)))
-                # dot_builder.cite(paper_id, make_entry(paper), ref_id, make_entry(ref))
+                citations.append((paper_entry, dot_builder.make_entry(ref)))
                 remaining2.append(ref_id)
 
         tmp = remaining2
@@ -128,5 +177,5 @@ def build_graph(seeds: List[PaperId], depth: int, bibdata: bibtex.BibliographyDa
         remaining = tmp
 
     for (src, dst) in citations:
-        if dst.key[1:] in done:
-            dot_builder.cite(None, src, None, dst)
+        if dst.fields[SEMAPI_ID_FIELD] in done:
+            dot_builder.cite(src, dst)
