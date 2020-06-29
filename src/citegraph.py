@@ -2,7 +2,7 @@ import graphviz as g
 import bibtexparser as btex
 from bibtexparser.bibdatabase import BibDatabase
 from typing import NamedTuple
-import sys, os, textwrap, getopt, html
+import os, textwrap, html
 
 DEFAULT_FORMAT = "pdf"
 
@@ -10,7 +10,7 @@ DEFAULT_FORMAT = "pdf"
 
 class Args(NamedTuple):
     dotfile: str
-    renderfile: str
+    output_file: str
     renderformat: str
     bibfile: str
 
@@ -53,64 +53,35 @@ def make_label(entry):
 
 
 
-def parse_args(argv) -> Args:
-    (opt_dotfile, opt_dotfile_short) = ("dotfile", "d")
-    (opt_bibfile, opt_bibfile_short) = ("bibfile", "i")
-    (opt_format_short) = "f"
-    (opt_render_out_short) = "o"
+def parse_args() -> Args:
+    from optparse import OptionParser
+    parser = OptionParser(usage="usage: %prog [options] file.bib")
+    parser.add_option("-f", "--format", help="Render format, one of %s" % g.FORMATS, metavar="FORMAT", default=DEFAULT_FORMAT)
+    parser.add_option("-d", "--dotfile", help="Dump for generated DOT (default none)", metavar="FILE")
+    parser.add_option("-o", "--outfile", help="Path to the rendered file (default next to bib file)", metavar="FILE")
 
+    (options, args) = parser.parse_args()
 
-    def usage():
-        print("Usage:")
-        print("  citegraph.py -%s <file>.bib -%s <graph>.dot" % (opt_bibfile_short, opt_dotfile_short))
-        print("  citegraph.py --%s <file>.bib --%s <graph>.dot" % (opt_bibfile, opt_dotfile))
-        print("Available formats: %s" % g.FORMATS)
+    if len(args) == 0:
+        parser.error("Missing bibtex file")
+    elif len(args) > 1:
+        parser.error("Expecting a single positional argument")
 
+    bibfile = args[0]
+    render_file = options.outfile or os.path.splitext(bibfile)[0]
 
-    bibfile = None
-    dotfile = None
-    render_out = None
-    format = DEFAULT_FORMAT
-    try:
-        opts, args = getopt.getopt(argv,
-                                   "h%s:%s:%s:%s:" % (
-                                       opt_bibfile_short, opt_dotfile_short, opt_format_short, opt_render_out_short),
-                                   ["%s=" % opt_bibfile, "%s=" % opt_dotfile])
-    except getopt.GetoptError:
-        usage()
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt == '-h':
-            usage()
-            sys.exit()
-        elif opt in ("-" + opt_bibfile_short, "--" + opt_bibfile):
-            if not render_out:
-                render_out = os.path.splitext(arg)[0]
-            bibfile = arg
-        elif opt in ("-" + opt_dotfile_short, "--" + opt_dotfile):
-            dotfile = arg
-        elif opt == opt_format_short:
-            format = arg
-        elif opt == opt_render_out_short:
-            render_out = opt
-
-    if not bibfile:
-        print("Missing .bib file as input")
-        usage()
-        sys.exit(2)
-
-    return Args(bibfile=bibfile,
-                dotfile=dotfile,
-                renderformat=format,
-                renderfile=render_out
-                )
-
+    return Args(
+        renderformat=options.format,
+        bibfile=bibfile,
+        dotfile=options.dotfile,
+        output_file=render_file
+    )
 
 
 if __name__ == "__main__":
-    args = parse_args(sys.argv[1:])
+    args = parse_args()
     graph = to_dot(args.bibfile)
     if args.dotfile:
         graph.save(filename=args.dotfile)
 
-    graph.render(filename=args.renderfile, format=args.renderformat)
+    graph.render(filename=args.output_file, format=args.renderformat)
