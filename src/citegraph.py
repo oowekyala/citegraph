@@ -1,8 +1,9 @@
 import graphviz as g
-import bibtexparser as btex
-from bibtexparser.bibdatabase import BibDatabase
 from typing import NamedTuple
 import os, textwrap, html
+
+import pybtex.database as bibtex
+from pybtex.database.input.bibtex import Parser as BibParser
 
 # Generate a citation graph from a bibtex bibliography
 
@@ -17,6 +18,7 @@ import os, textwrap, html
 DEFAULT_FORMAT = "pdf"
 CITE_BIB_KEY = "_cites"
 READ_BIB_KEY = "_read"
+UNKNOWN_PERSON = bibtex.Person(string="Unknown von Nowhere")
 
 class Args(NamedTuple):
     dotfile: str
@@ -27,37 +29,36 @@ class Args(NamedTuple):
 
 
 def to_dot(bibfile: str) -> g.Digraph:
-    with open(bibfile, "r") as infile:
-        bibdata: BibDatabase = btex.load(infile)
+    bibdata: bibtex.BibliographyData = BibParser().parse_file(bibfile)
 
     dot = g.Digraph("Citation graph")
 
-    for entry in bibdata.entries:
-        pubid = entry["ID"]
+    entry: bibtex.Entry
+    for entry in bibdata.entries.itervalues():
+        (color, style) = ("lightblue", "filled") if entry.fields.get(READ_BIB_KEY, "") == "true" else (None, None)
 
-        (color, style) = ("lightblue", "filled") if entry.get(READ_BIB_KEY, "") == "true" else (None, None)
-
-        dot.node(name=pubid, label=make_label(entry), style=style, fillcolor=color)  # todo limit size
-        refs = entry.get(CITE_BIB_KEY, None)
+        dot.node(name=entry.key, label=make_label(entry), style=style, fillcolor=color)  # todo limit size
+        refs = entry.fields.get(CITE_BIB_KEY, None)
         if refs:
             for refid in refs.split(','):
-                dot.edge(pubid, refid.strip())
+                dot.edge(entry.key, refid.strip())
 
     return dot
 
 
 
-def make_label(entry):
-    title = entry["title"]
+def make_label(entry: bibtex.Entry):
+    fields = entry.fields
+    title = fields["title"]
+    title = "\n".join(textwrap.wrap(title, width=20))
 
-    first_author = entry.get("author", "Unknown authors")
-    first_author = first_author.split(",")[0]
+    first_author: bibtex.Person = next(iter(entry.persons["author"] or []), None) or UNKNOWN_PERSON
 
-    label = "<<B>%s" % html.escape(first_author)
-    if "year" in entry:
-        label += " (%s)" % entry["year"]
+    label = "<<B>%s" % html.escape(first_author.last_names[0])
+    if "year" in fields:
+        label += " (%s)" % fields["year"]
 
-    label += "</B><BR/>" + html.escape("\n".join(textwrap.wrap(title, width=20))).replace("\n", "<BR/>") + ">"
+    label += "</B><BR/>" + html.escape(title).replace("\n", "<BR/>") + ">"
 
     return label
 
