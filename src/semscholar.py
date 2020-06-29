@@ -46,10 +46,10 @@ class DotBuilder(object):
         self.id_to_bibkey = {}
 
 
-    def get_node_attributes(self, paper_entry: bibtex.Entry, is_from_bib_file: bool):
+    def get_node_attributes(self, paper_entry: bibtex.Entry):
         attrs = {}
 
-        if is_from_bib_file:
+        if self.is_from_bib_file(paper_entry):
             attrs["style"] = "filled"
 
             if paper_entry.fields.get(READ_BIB_KEY, "") == "true":
@@ -59,16 +59,9 @@ class DotBuilder(object):
         else:
             attrs["style"] = "dashed"
 
+        attrs["URL"] = f"https://www.semanticscholar.org/paper/{paper_entry.fields[SEMAPI_ID_FIELD]}"
+
         return attrs
-
-
-    def add_paper(self, paper_entry: bibtex.Entry):
-
-        is_from_bib_file = paper_entry.fields[SEMAPI_ID_FIELD] in self.id_to_bibkey
-
-        self.dot.node(name=paper_entry.key,
-                      label=self.make_label(paper_entry),
-                      **self.get_node_attributes(paper_entry, is_from_bib_file))
 
 
     def make_label(self, entry: bibtex.Entry):
@@ -87,10 +80,36 @@ class DotBuilder(object):
         return label
 
 
+    def add_paper(self, paper_entry: bibtex.Entry):
+
+        self.dot.node(name=paper_entry.key,
+                      label=self.make_label(paper_entry),
+                      **self.get_node_attributes(paper_entry))
+
+
+    def is_from_bib_file(self, paper_entry):
+        return paper_entry.fields[SEMAPI_ID_FIELD] in self.id_to_bibkey
+
+
+    def get_edge_attributes(self, src: bibtex.Entry, dst: bibtex.Entry):
+        attrs = {}
+
+        src_in_bib = self.is_from_bib_file(src)
+        dst_in_bib = self.is_from_bib_file(dst)
+        if src_in_bib ^ dst_in_bib:
+            attrs["color"] = "black;0.25:gray" if src_in_bib else "gray;0.75:black"
+        elif not src_in_bib or not dst_in_bib:
+            attrs["color"] = "gray"
+        else:
+            attrs["weight"] = "2"
+
+        return attrs
+
+
     def cite(self, src_entry: bibtex.Entry, dst_entry: bibtex.Entry):
         self.__norm_key(src_entry)
         self.__norm_key(dst_entry)
-        self.dot.edge(src_entry.key, dst_entry.key)
+        self.dot.edge(src_entry.key, dst_entry.key, **self.get_edge_attributes(src_entry, dst_entry))
 
 
     def __norm_key(self, entry: bibtex.Entry):
