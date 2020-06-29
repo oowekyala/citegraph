@@ -4,9 +4,19 @@ from bibtexparser.bibdatabase import BibDatabase
 from typing import NamedTuple
 import os, textwrap, html
 
+# Generate a citation graph from a bibtex bibliography
+
+# Citations need to be filled in manually inside a `_cites` key of each bibtex entry
+# If you mention _read={true}, the node changes color
+
+# TODO
+#  * custom DOT attributes for eg books
+#  * extensible metadata in bibtex -> format options at call time
+#      eg '--tag=old->[style=dotted]', then all entries that have a key "old" are dotted
+
 DEFAULT_FORMAT = "pdf"
-
-
+CITE_BIB_KEY = "_cites"
+READ_BIB_KEY = "_read"
 
 class Args(NamedTuple):
     dotfile: str
@@ -25,10 +35,10 @@ def to_dot(bibfile: str) -> g.Digraph:
     for entry in bibdata.entries:
         pubid = entry["ID"]
 
-        (color, style) = ("lightblue", "filled") if entry.get("_read", "") == "true" else (None, None)
+        (color, style) = ("lightblue", "filled") if entry.get(READ_BIB_KEY, "") == "true" else (None, None)
 
         dot.node(name=pubid, label=make_label(entry), style=style, fillcolor=color)  # todo limit size
-        refs = entry.get("_cites", None)
+        refs = entry.get(CITE_BIB_KEY, None)
         if refs:
             for refid in refs.split(','):
                 dot.edge(pubid, refid.strip())
