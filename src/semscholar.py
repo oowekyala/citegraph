@@ -59,11 +59,30 @@ class DotBuilder(object):
 
 
 
+def make_entry(paper_dict) -> bibtex.Entry:
+    fields = {
+        "title": paper_dict["title"],
+        "year": paper_dict["year"],
+    }
+
+    persons = {
+        "author": [
+            bibtex.Person(author["name"]) for author in paper_dict["authors"]
+        ]
+    }
+
+    entry = bibtex.Entry(type_="article", persons=persons, fields=fields)
+    entry.key = "a" + paper_dict["paperId"]  # add an 'a' so that it's not only numeric
+    return entry
+
+
+
 def build_graph(seeds: List[PaperId], depth: int, bibdata: bibtex.BibliographyData, dot_builder: DotBuilder):
     """From an initial paper id, crawl its references up to depth.
        A reference is not explored for the next depth if it is not
        contained in the entries (but it's kept in the db).
     """
+
 
     def include(titled):
         return [e for e in bibdata.entries.itervalues()
@@ -74,9 +93,11 @@ def build_graph(seeds: List[PaperId], depth: int, bibdata: bibtex.BibliographyDa
     remaining = [] + seeds
     remaining2 = []
 
-    while depth > 0 and len(remaining) > 0:
+    citations = []
+
+    while depth > 0:
         depth -= 1
-        for paper_id in remaining.copy():
+        for paper_id in remaining:
             if paper_id in done:
                 continue
 
@@ -87,20 +108,25 @@ def build_graph(seeds: List[PaperId], depth: int, bibdata: bibtex.BibliographyDa
                 print("Scholar doesn't know paper with id %s" % paper_id)
                 continue
 
-            print("[paper] %s" + paper["title"])
+            print("[paper %d] %s" % (len(done), paper["title"]))
 
-            if include(paper):
-                print(" -> included")
-                # References are explored up to the given depth even if the paper is not included
-                dot_builder.add_paper(paper, include(paper)[0])
+            # if include(paper):
+            #     print(" -> included")
+            # References are explored up to the given depth even if the paper is not included
+            dot_builder.add_paper(paper, make_entry(paper))
 
             for ref in paper["references"]:
                 ref_id = ref["paperId"]
 
-                if include(paper) and include(ref):
-                    dot_builder.cite(paper_id, include(paper)[0], ref_id, include(ref)[0])
-                    remaining2.append(ref_id)
+                # if include(paper) and include(ref):
+                citations.append((make_entry(paper), make_entry(ref)))
+                # dot_builder.cite(paper_id, make_entry(paper), ref_id, make_entry(ref))
+                remaining2.append(ref_id)
 
         tmp = remaining2
         remaining2 = remaining
         remaining = tmp
+
+    for (src, dst) in citations:
+        if dst.key[1:] in done:
+            dot_builder.cite(None, src, None, dst)

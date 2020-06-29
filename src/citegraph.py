@@ -25,6 +25,7 @@ class Args(NamedTuple):
     renderformat: str
     bibfile: str
     rootid: str
+    depth:int
 
 def parse_args() -> Args:
     from optparse import OptionParser
@@ -32,6 +33,7 @@ def parse_args() -> Args:
     parser.add_option("-f", "--format", help="Render format, one of %s" % g.FORMATS, metavar="FORMAT", default=DEFAULT_FORMAT)
     parser.add_option("-d", "--dotfile", help="Dump for generated DOT (default none)", metavar="FILE")
     parser.add_option("-o", "--outfile", help="Path to the rendered file (default next to bib file)", metavar="FILE")
+    parser.add_option("--depth", type="int", help="Depth of the exploration", metavar="INT", default=2)
 
     (options, args) = parser.parse_args()
 
@@ -48,7 +50,8 @@ def parse_args() -> Args:
         bibfile=bibfile,
         dotfile=options.dotfile,
         output_file=render_file,
-        rootid=rootid
+        rootid=rootid,
+        depth=options.depth
     )
 
 
@@ -56,9 +59,11 @@ if __name__ == "__main__":
     args = parse_args()
     bibdata: bibtex.BibliographyData = BibParser().parse_file(args.bibfile)
     dot_builder = semapi.DotBuilder()
-    semapi.build_graph([args.rootid], depth=4, bibdata=bibdata, dot_builder=dot_builder)
+    semapi.build_graph([args.rootid], depth=args.depth, bibdata=bibdata, dot_builder=dot_builder)
     graph: g.Digraph = dot_builder.dot
     if args.dotfile:
+        print("DOT saved in " + args.dotfile)
         graph.save(filename=args.dotfile)
 
+    print("Rendered to " + args.output_file + "." + args.renderformat)
     graph.render(filename=args.output_file, format=args.renderformat)
