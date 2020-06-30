@@ -41,6 +41,15 @@ def author_set(p1):
     return {" ".join(p.last_names) for p in p1.persons["author"]}
 
 
+def seeds_in_bib(biblio: Biblio):
+    seeds = []
+    for paper in biblio:
+        if paper.fields.get("journal", "").lower() == "arxiv":
+            volume: str = paper.fields.get("volume", "")
+            if volume.startswith("abs/"):
+                seeds += f"arXiv:{volume[3:]}"
+
+    return seeds
 
 def initialize_graph(seeds: List[PaperId],
                      biblio: Biblio,
@@ -51,7 +60,7 @@ def initialize_graph(seeds: List[PaperId],
     This does some heuristic search to find papers that are the "closest"
     from the bibliography entries.
 
-    TODO consider seeds 
+    TODO consider seeds
 
     TODO expand on that by reweighting nodes according to eg in-degree
         Eg the references of a widely cited paper are more important than one-off reference chains
@@ -80,6 +89,8 @@ def initialize_graph(seeds: List[PaperId],
 
 
     open_set = PriorityQueue()
+
+    seeds = [*seeds, *seeds_in_bib(biblio)]
 
     # For node n, g_score[n] is the cost of the best path from start to n currently known.
     g_score = {id: 0 for id in seeds}

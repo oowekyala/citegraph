@@ -32,6 +32,9 @@ class Biblio(object):
         return semapi_id(entry) in self.id_to_bibkey \
                or entry.key in self.bibdata.entries
 
+    def __iter__(self):
+        return iter(self.bibdata.entries.values())
+
 
     def norm_key(self, entry: Paper):
         entry.key = self.id_to_bibkey.get(entry.fields[SEMAPI_ID_FIELD], entry.key)
