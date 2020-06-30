@@ -5,12 +5,36 @@ from pybtex.database.input.bibtex import Parser as BibParser
 SEMAPI_ID_FIELD = "semapi_id"
 ABSTRACT_FIELD = "_abstract"
 
-Paper = bibtex.Entry
 Person = bibtex.Person
 
 
-def semapi_id(e: Paper):
-    return e.fields[SEMAPI_ID_FIELD]
+
+class Paper(object):
+
+    def __init__(self, fields, authors,
+                 type_="article",
+                 bibtex_id=None):
+        self.fields = fields
+        self.authors = authors
+        self.type_ = type_
+        self.id = bibtex_id or fields.get(SEMAPI_ID_FIELD, None)
+        self.bibtex_id = bibtex_id
+
+
+    def __getattr__(self, name):
+        return self.fields.get(name, None)
+
+
+    def __eq__(self, other):
+        if not isinstance(other, Paper):
+            return super(Paper, self).__eq__(other)
+        else:
+            return self.id and self.id == other.id or self.title == other.title
+
+
+    def __hash__(self):
+        return hash(self.id) if self.id else hash(self.title)
+
 
 
 class Biblio(object):
@@ -20,24 +44,23 @@ class Biblio(object):
     def __init__(self, bibdata: bibtex.BibliographyData):
         self.bibdata = bibdata
         self.by_norm_title: Dict[str, Paper] = {
-            paper.fields["title"].lower(): paper for paper in bibdata.entries.itervalues()
+            paper.fields["title"].lower(): Paper(paper.fields, paper.persons["author"],
+                                                 # type_=paper,
+                                                 bibtex_id=paper.key)
+            for paper in bibdata.entries.itervalues()
         }
         self.id_to_bibkey = {}
 
 
-    def __contains__(self, entry: Paper):
+    def __contains__(self, paper: Paper):
         """
         Returns whether this bib file contains the given entry.
         """
-        return semapi_id(entry) in self.id_to_bibkey \
-               or entry.key in self.bibdata.entries
+        return paper.id and paper.id in self.id_to_bibkey \
+               or paper.bibtex_id and paper.bibtex_id in self.bibdata.entries
 
     def __iter__(self):
-        return iter(self.bibdata.entries.values())
-
-
-    def norm_key(self, entry: Paper):
-        entry.key = self.id_to_bibkey.get(entry.fields[SEMAPI_ID_FIELD], entry.key)
+        return iter(self.by_norm_title.values())
 
 
     def make_entry(self, paper_dict) -> Paper:
@@ -49,16 +72,16 @@ class Biblio(object):
         :param paper_dict: Semapi result
         :return: An entry
         """
+        paper_id = paper_dict["paperId"]
 
         bibtex_entry = self.by_norm_title.get(paper_dict["title"].lower(), None)
 
-        paper_id = paper_dict["paperId"]
-
         if bibtex_entry:  # paper is in bibtex file, prefer data from that file
             # save mapping from ID to bibtex key
-            self.id_to_bibkey[paper_id] = bibtex_entry.key
+            bibtex_entry.id = paper_id
+            self.id_to_bibkey[paper_id] = bibtex_entry.bibtex_id
             # print("  Found key %s in bib file" % bibtex_entry.key)
-            bibtex_entry.fields[SEMAPI_ID_FIELD] = paper_id
+            bibtex_entry.id = paper_id
             bibtex_entry.fields[ABSTRACT_FIELD] = paper_dict.get("abstract", "")
             return bibtex_entry
         else:
@@ -66,17 +89,11 @@ class Biblio(object):
                 "title": paper_dict["title"],
                 "year": paper_dict["year"],
                 SEMAPI_ID_FIELD: paper_id,
-                ABSTRACT_FIELD: paper_dict.get("abstract", "")
+                ABSTRACT_FIELD: paper_dict.get("abstract", ""),
             }
 
-            persons = {
-                "author": [bibtex.Person(author["name"]) for author in paper_dict["authors"]]
-            }
-
-            entry = Paper(type_="article", persons=persons, fields=fields)
-            entry.key = paper_id
-
-            return entry
+            authors = [bibtex.Person(author["name"]) for author in paper_dict["authors"]]
+            return Paper(type_="article", authors=authors, fields=fields)
 
     @staticmethod
     def from_file(filename) -> 'Biblio':

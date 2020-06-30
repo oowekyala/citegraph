@@ -62,7 +62,7 @@ class StylingInfo(object):
 
 
             def selects(members, selector):
-                return lambda p, biblio: p.key in members\
+                return lambda p, biblio: p.bibtex_id in members\
                        or eval(selector, {"paper": p})
 
 
@@ -76,7 +76,7 @@ class StylingInfo(object):
             if selector(paper, biblio):
                 attrs.update(self._tags[tag])
 
-        attrs.update(self._by_id.get(paper.key, {}))
+        attrs.update(self._by_id.get(paper.bibtex_id, {}))
 
         return attrs
 
@@ -95,7 +95,7 @@ class DotGraphRenderer(GraphRenderer):
 
     def get_node_attributes(self, paper: Paper):
         return {
-            "URL": f"https://www.semanticscholar.org/paper/{semapi_id(paper)}",
+            "URL": f"https://www.semanticscholar.org/paper/{paper.id}",
             **self.styling.get_attributes(paper, self.bibdata)
         }
 
@@ -105,7 +105,7 @@ class DotGraphRenderer(GraphRenderer):
         title = fields["title"]
         title = "\n".join(textwrap.wrap(title, width=20))
 
-        first_author: Person = next(iter(entry.persons["author"] or []), None) or UNKNOWN_PERSON
+        first_author: Person = next(iter(entry.authors), None) or UNKNOWN_PERSON
 
         label = "<<B>%s" % html.escape(first_author.last_names[0])
         if "year" in fields:
@@ -118,7 +118,7 @@ class DotGraphRenderer(GraphRenderer):
 
     def add_node(self, paper: Paper):
 
-        self.dot.node(name=semapi_id(paper),
+        self.dot.node(name=paper.id,
                       label=self.make_label(paper),
                       **self.get_node_attributes(paper))
 
@@ -140,9 +140,7 @@ class DotGraphRenderer(GraphRenderer):
 
 
     def add_edge(self, src: Paper, dst: Paper):
-        self.dot.edge(semapi_id(src),
-                      semapi_id(dst),
-                      **self.get_edge_attributes(src, dst))
+        self.dot.edge(src.id, dst.id, **self.get_edge_attributes(src, dst))
 
 
     def render(self, filename, render_format):

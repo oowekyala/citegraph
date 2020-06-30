@@ -1,7 +1,7 @@
 from typing import List, Dict, Optional, Callable
 from queue import PriorityQueue
 
-from citegraph.model import Biblio, Paper, semapi_id
+from citegraph.model import Biblio, Paper
 from citegraph.draw import GraphRenderer
 from citegraph.semapi import PaperId, PaperDb, PaperAndRefs
 
@@ -21,7 +21,7 @@ class Graph(object):
                 added.add(title)
                 builder.add_node(paper.paper)
                 for ref in paper.references:
-                    if semapi_id(ref) in self.nodes:
+                    if ref.id in self.nodes:
                         builder.add_edge(paper.paper, ref)
 
 
@@ -30,24 +30,21 @@ Infty = 2 ** 10_000
 
 
 
-def author_similarity(p1: Paper, p2: Paper) -> int:
-    total_authors = len(p1.persons["author"]) + len(p2.persons["author"])
-    authors_in_common = len(author_set(p1) & author_set(p2))
-    return authors_in_common
-
+def authors_in_common(p1: Paper, p2: Paper) -> int:
+    return len(author_set(p1) & author_set(p2))
 
 
 def author_set(p1):
-    return {" ".join(p.last_names) for p in p1.persons["author"]}
+    return {" ".join(p.last_names) for p in p1.authors}
 
 
 def seeds_in_bib(biblio: Biblio):
     seeds = []
     for paper in biblio:
-        if paper.fields.get("journal", "").lower() == "arxiv":
-            volume: str = paper.fields.get("volume", "")
+        if paper.journal and paper.journal.lower() == "arxiv":
+            volume: str = getattr(paper, "volume", "")
             if volume.startswith("abs/"):
-                seeds += f"arXiv:{volume[3:]}"
+                seeds += "arXiv:" + volume[len("abs/"):]
 
     return seeds
 
@@ -85,7 +82,7 @@ def initialize_graph(seeds: List[PaperId],
         elif dst in biblio:
             base = 7
         # the minimum edge weight must be positive
-        return base - min(author_similarity(src, dst), 3)
+        return base - min(authors_in_common(src, dst), 3)
 
 
     open_set = PriorityQueue()
@@ -108,9 +105,8 @@ def initialize_graph(seeds: List[PaperId],
 
 
     def is_not_in_open_set(p: Paper):
-        id = semapi_id(p)
         for (_, c) in open_set.queue:
-            if c == id:
+            if c == p.id:
                 return False
         return True
 
@@ -136,7 +132,7 @@ def initialize_graph(seeds: List[PaperId],
         paper = result.paper
         nodes[paper_id] = result
 
-        print(f'[{len(nodes)} / {max_size}] {paper.fields["title"]} (score {cur_f_score})')
+        print(f'[{len(nodes)} / {max_size}] {paper.title} (score {cur_f_score})')
 
         if len(nodes) >= max_size:
             print("Hit max size threshold")
@@ -144,7 +140,7 @@ def initialize_graph(seeds: List[PaperId],
 
         neighbor: Paper
         for neighbor in result.references:
-            neighbor_id = semapi_id(neighbor)
+            neighbor_id = neighbor.id
 
             # tentative_gScore is the distance from start to the neighbor through current
             tentative_g_score = g_score.get(paper_id, Infty) + edge_cost(paper, neighbor)
