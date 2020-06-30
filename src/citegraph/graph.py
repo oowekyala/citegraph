@@ -64,9 +64,10 @@ class GraphBuilder(object):
 
         src_in_bib = src in self.bibdata
         dst_in_bib = dst in self.bibdata
-        if src_in_bib ^ dst_in_bib:
-            attrs["color"] = "black;0.25:gray" if src_in_bib else "gray;0.75:black"
-        elif not src_in_bib or not dst_in_bib:
+        # if src_in_bib ^ dst_in_bib:
+        #     attrs["color"] = "black;0.25:gray" if src_in_bib else "gray;0.75:black"
+        # elif
+        if not src_in_bib or not dst_in_bib:
             attrs["color"] = "gray"
         else:
             attrs["weight"] = "2"
