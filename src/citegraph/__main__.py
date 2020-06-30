@@ -65,7 +65,7 @@ if __name__ == "__main__":
                                      max_size=args.initial_size,
                                      db=db)
 
-    dot_builder = GraphBuilder(bibdata=bibdata)
+    dot_builder = DotGraphRenderer(bibdata=bibdata)
     graph.draw(dot_builder)
 
     if args.dotfile:

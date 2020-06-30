@@ -3,15 +3,30 @@ import textwrap
 
 import graphviz as g
 
-from citegraph.model import Biblio, Paper, Person, SEMAPI_ID_FIELD
+from citegraph.model import *
+
+from abc import ABCMeta, abstractmethod
 
 UNKNOWN_PERSON = Person(string="Unknown von Nowhere")
 READ_BIB_KEY = "_read"
 
-
 DOT_FORMAT = "dot"
 
-class GraphBuilder(object):
+
+
+class GraphRenderer:
+
+    @abstractmethod
+    def add_node(self, paper: Paper):
+        pass
+
+
+    @abstractmethod
+    def add_edge(self, src: Paper, dst: Paper):
+        pass
+
+
+class DotGraphRenderer(GraphRenderer):
 
     def __init__(self, bibdata: Biblio, title="Citation graph"):
         self.dot = g.Digraph(title)
@@ -52,11 +67,11 @@ class GraphBuilder(object):
         return label
 
 
-    def add_paper(self, paper_entry: Paper):
+    def add_node(self, paper: Paper):
 
-        self.dot.node(name=paper_entry.key,
-                      label=self.make_label(paper_entry),
-                      **self.get_node_attributes(paper_entry))
+        self.dot.node(name=semapi_id(paper),
+                      label=self.make_label(paper),
+                      **self.get_node_attributes(paper))
 
 
     def get_edge_attributes(self, src: Paper, dst: Paper):
@@ -75,14 +90,10 @@ class GraphBuilder(object):
         return attrs
 
 
-    def cite(self, src_entry: Paper, dst_entry: Paper):
-        self.bibdata.norm_key(src_entry)
-        self.bibdata.norm_key(dst_entry)
-        self.dot.edge(src_entry.key, dst_entry.key, **self.get_edge_attributes(src_entry, dst_entry))
-
-
-    def make_entry(self, paper_dict) -> Paper:
-        return self.bibdata.make_entry(paper_dict)
+    def add_edge(self, src: Paper, dst: Paper):
+        self.dot.edge(semapi_id(src),
+                      semapi_id(dst),
+                      **self.get_edge_attributes(src, dst))
 
 
     def render(self, filename, render_format):

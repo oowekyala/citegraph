@@ -2,7 +2,7 @@ from typing import List, Dict, Optional, Callable
 from queue import PriorityQueue
 
 from citegraph.model import Biblio, Paper, semapi_id
-from citegraph.draw import GraphBuilder
+from citegraph.draw import GraphRenderer
 from citegraph.semapi import PaperId, PaperDb, PaperAndRefs
 
 
@@ -12,12 +12,12 @@ class Graph(object):
     def __init__(self, nodes: Dict[PaperId, PaperAndRefs]):
         self.nodes = nodes
 
-    def draw(self, builder: GraphBuilder):
+    def draw(self, builder: GraphRenderer):
         for paper in self.nodes.values():
-            builder.add_paper(paper.paper)
+            builder.add_node(paper.paper)
             for ref in paper.references:
                 if semapi_id(ref) in self.nodes:
-                    builder.cite(paper.paper, ref)
+                    builder.add_edge(paper.paper, ref)
 
 
 
