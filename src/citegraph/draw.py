@@ -1,4 +1,5 @@
 import html
+import yaml
 import textwrap
 
 import graphviz as g
@@ -14,7 +15,7 @@ DOT_FORMAT = "dot"
 
 
 
-class GraphRenderer:
+class GraphRenderer(object):
 
     @abstractmethod
     def add_node(self, paper: Paper):
@@ -26,29 +27,77 @@ class GraphRenderer:
         pass
 
 
-class DotGraphRenderer(GraphRenderer):
 
-    def __init__(self, bibdata: Biblio, title="Citation graph"):
-        self.dot = g.Digraph(title)
-        self.bibdata = bibdata
+class StylingInfo(object):
+
+    def __init__(self, filename):
+        self._by_id = {}
+        self._tags = {}
+        self.selectors_by_tag = {}
+
+        if filename:
+            with open(filename) as file:
+                doc = yaml.load(file)
+                self.categorize(doc)
 
 
-    def get_node_attributes(self, paper_entry: Paper):
+    def add_tag(self, name, attrs, selector_fun):
+        self._tags[name] = attrs
+        self.selectors_by_tag[name] = selector_fun
+
+
+    def categorize(self, yaml_doc):
+        self.add_tag("default_outside_bib",
+                     attrs={"style": "dashed"},
+                     selector_fun=lambda p, biblio: p not in biblio
+                     )
+
+        for tag, body in yaml_doc.get("tags", {}).items():
+            print(f"processing {tag}")
+            attrs = body.get("attrs", {})
+
+            for id in body.get("members", []):
+                prev_attrs = self._by_id.get(id, {})
+                self._by_id[id] = {**prev_attrs, **attrs}
+
+
+            def selects(members, selector):
+                return lambda p, biblio: p.key in members\
+                       or eval(selector, {"paper": p})
+
+
+            self.add_tag(tag, attrs, selector_fun=selects(body.get("members", []), body.get("selector", "False")))
+
+
+    def get_attributes(self, paper: Paper, biblio: Biblio):
         attrs = {}
 
-        if paper_entry in self.bibdata:
-            attrs["style"] = "filled"
+        for tag, selector in self.selectors_by_tag.items():
+            if selector(paper, biblio):
+                attrs.update(self._tags[tag])
 
-            if paper_entry.fields.get(READ_BIB_KEY, "") == "true":
-                attrs["fillcolor"] = "lightblue"
-            else:
-                attrs["fillcolor"] = "lightyellow"
-        else:
-            attrs["style"] = "dashed"
-
-        attrs["URL"] = f"https://www.semanticscholar.org/paper/{paper_entry.fields[SEMAPI_ID_FIELD]}"
+        attrs.update(self._by_id.get(paper.key, {}))
 
         return attrs
+
+
+
+class DotGraphRenderer(GraphRenderer):
+
+    def __init__(self,
+                 bibdata: Biblio,
+                 styling: StylingInfo,
+                 title="Citation graph"):
+        self.dot = g.Digraph(title)
+        self.bibdata = bibdata
+        self.styling = styling
+
+
+    def get_node_attributes(self, paper: Paper):
+        return {
+            "URL": f"https://www.semanticscholar.org/paper/{semapi_id(paper)}",
+            **self.styling.get_attributes(paper, self.bibdata)
+        }
 
 
     def make_label(self, entry: Paper):

@@ -19,18 +19,7 @@ from pathlib import Path
 DEFAULT_FORMAT = "pdf"
 
 
-
-class Args(NamedTuple):
-    dotfile: str
-    output_file: str
-    renderformat: str
-    bibfile: str
-    roots: List[PaperId]
-    initial_size: int
-
-
-
-def parse_args() -> Args:
+def parse_args():
     import argparse
     parser = argparse.ArgumentParser(prog="citegraph",
                                      formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -50,6 +39,7 @@ def parse_args() -> Args:
     PubMed ID   : PMID:19872477
     Corpus ID   : CorpusID:37220927
 
+
     Examples:
 
     $ citegraph biblio.bib CorpusID:37220927
@@ -60,12 +50,13 @@ def parse_args() -> Args:
     Report issues at https://github.com/oowekyala/citegraph                                     
 
     """.rstrip())
+
     parser.add_argument("-f", "--format", help="Render format, one of %s" % g.FORMATS, metavar="FORMAT",
                         default=DEFAULT_FORMAT)
     parser.add_argument("-d", "--dotfile", help="Dump for generated DOT (default none)", metavar="FILE")
     parser.add_argument("-o", "--outfile", help="Path to the rendered file (default next to bib file)", metavar="FILE")
-    parser.add_argument("--initial-size", type=int, help="Size of the graph to generate",
-                        metavar="INT", default=80)
+    parser.add_argument("--initial-size", type=int, help="Size of the graph to generate", metavar="INT", default=80)
+    parser.add_argument("--tags", help="Path to a yaml file containing styling info", metavar="FILE")
 
     parser.add_argument("bibfile", metavar="file.bib", help="Bibtex file")
     parser.add_argument("graph_roots", metavar="ID", nargs="+", help="Paper IDs")
@@ -77,14 +68,7 @@ def parse_args() -> Args:
     if not Path(parsed.bibfile).is_file():
         parser.error(f"Bibtex file does not exist: {parsed.bibfile}")
 
-    return Args(
-        renderformat=parsed.format,
-        bibfile=parsed.bibfile,
-        dotfile=parsed.dotfile,
-        output_file=parsed.outfile,
-        roots=parsed.graph_roots,
-        initial_size=parsed.initial_size
-    )
+    return parsed
 
 
 
@@ -93,15 +77,15 @@ if __name__ == "__main__":
 
     bibdata = Biblio.from_file(args.bibfile)
     db = PaperDb(bibdata=bibdata)
-    graph = explore.initialize_graph(seeds=args.roots,
+    graph = explore.initialize_graph(seeds=args.graph_roots,
                                      biblio=bibdata,
                                      max_size=args.initial_size,
                                      db=db)
 
-    dot_builder = DotGraphRenderer(bibdata=bibdata)
+    dot_builder = DotGraphRenderer(bibdata=bibdata, styling=StylingInfo(args.tags))
     graph.draw(dot_builder)
 
     if args.dotfile:
         dot_builder.render(filename=args.dotfile, render_format=DOT_FORMAT)
 
-    dot_builder.render(filename=args.output_file, render_format=args.renderformat)
+    dot_builder.render(filename=args.outfile, render_format=args.format)

@@ -8,9 +8,24 @@ This uses the semanticscholar API to fetch references for articles.
 
 ### Customizing graph appearance
 
-TODO currently ad-hoc
 
-Ideally, input a yaml file that contains additional tags for
-each paper, and some styling information for that 
-
-
+You can specify how individual nodes are styled with a yaml file.
+For example:
+```yaml
+tags:
+    read: # an identifier for the tag
+        attrs: # DOT attributes:     https://graphviz.gitlab.io/doc/info/attrs.html
+            style: bold
+        members: # enumerate explicit members using keys of the bibtex file
+            - someBibKey
+            - another
+    
+    knuth_articles: # another tag
+        attrs: 
+            style: filled
+            fillcolor: lightyellow
+        
+        # Select using an arbitrary python expression
+        # The bibtex entry is in scope as 'paper'
+        selector: 'any(["Knuth"] == author.last_names for author in paper.persons["author"])'
+```
