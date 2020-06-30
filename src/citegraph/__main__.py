@@ -51,15 +51,14 @@ def parse_args():
 
     """.rstrip())
 
-    parser.add_argument("-f", "--format", help="Render format, one of %s" % g.FORMATS, metavar="FORMAT",
-                        default=DEFAULT_FORMAT)
+    parser.add_argument("-f", "--format", help="Render format, one of %s" % g.FORMATS, metavar="FORMAT", default=DEFAULT_FORMAT)
     parser.add_argument("-d", "--dotfile", help="Dump for generated DOT (default none)", metavar="FILE")
     parser.add_argument("-o", "--outfile", help="Path to the rendered file (default next to bib file)", metavar="FILE")
-    parser.add_argument("--initial-size", type=int, help="Size of the graph to generate", metavar="INT", default=80)
+    parser.add_argument("--size", type=int, help="Size of the graph to generate", metavar="INT", default=80)
     parser.add_argument("--tags", help="Path to a yaml file containing styling info", metavar="FILE")
 
     parser.add_argument("bibfile", metavar="file.bib", help="Bibtex file")
-    parser.add_argument("graph_roots", metavar="ID", nargs="+", help="Paper IDs")
+    parser.add_argument("graph_roots", metavar="ID", nargs="*", help="Paper IDs")
 
     parsed = parser.parse_args()
 
@@ -77,15 +76,16 @@ if __name__ == "__main__":
 
     bibdata = Biblio.from_file(args.bibfile)
     db = PaperDb(bibdata=bibdata)
-    graph = explore.initialize_graph(seeds=args.graph_roots,
-                                     biblio=bibdata,
-                                     max_size=args.initial_size,
-                                     db=db)
+    graph = explore.smart_fetch(seeds=args.graph_roots,
+                                biblio=bibdata,
+                                max_size=args.size,
+                                db=db)
 
-    dot_builder = DotGraphRenderer(bibdata=bibdata, styling=StylingInfo(args.tags))
-    graph.draw(dot_builder)
+    if graph:
+        dot_builder = DotGraphRenderer(bibdata=bibdata, styling=StylingInfo(args.tags))
+        graph.draw(dot_builder)
 
-    if args.dotfile:
-        dot_builder.render(filename=args.dotfile, render_format=DOT_FORMAT)
+        if args.dotfile:
+            dot_builder.render(filename=args.dotfile, render_format=DOT_FORMAT)
 
-    dot_builder.render(filename=args.outfile, render_format=args.format)
+        dot_builder.render(filename=args.outfile, render_format=args.format)
