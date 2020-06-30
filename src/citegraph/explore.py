@@ -12,12 +12,17 @@ class Graph(object):
     def __init__(self, nodes: Dict[PaperId, PaperAndRefs]):
         self.nodes = nodes
 
+
     def draw(self, builder: GraphRenderer):
+        added = set([])
         for paper in self.nodes.values():
-            builder.add_node(paper.paper)
-            for ref in paper.references:
-                if semapi_id(ref) in self.nodes:
-                    builder.add_edge(paper.paper, ref)
+            title = paper.paper.fields["title"]
+            if title not in added:
+                added.add(title)
+                builder.add_node(paper.paper)
+                for ref in paper.references:
+                    if semapi_id(ref) in self.nodes:
+                        builder.add_edge(paper.paper, ref)
 
 
 
@@ -45,6 +50,8 @@ def initialize_graph(seeds: List[PaperId],
     Builds the initial graph by fetching reference data from semapi.
     This does some heuristic search to find papers that are the "closest"
     from the bibliography entries.
+
+    TODO consider seeds 
 
     TODO expand on that by reweighting nodes according to eg in-degree
         Eg the references of a widely cited paper are more important than one-off reference chains
@@ -82,6 +89,7 @@ def initialize_graph(seeds: List[PaperId],
     f_score = {id: 8 for id in seeds}
 
     nodes = {}
+
 
     def push(id: PaperId):
         f = f_score[id]
