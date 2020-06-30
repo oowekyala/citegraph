@@ -24,7 +24,7 @@ class Args(NamedTuple):
     renderformat: str
     bibfile: str
     roots: List[PaperId]
-    depth: int
+    initial_size: int
 
 
 
@@ -35,7 +35,7 @@ def parse_args() -> Args:
                       default=DEFAULT_FORMAT)
     parser.add_option("-d", "--dotfile", help="Dump for generated DOT (default none)", metavar="FILE")
     parser.add_option("-o", "--outfile", help="Path to the rendered file (default next to bib file)", metavar="FILE")
-    parser.add_option("--depth", type="int", help="Depth of the exploration", metavar="INT", default=2)
+    parser.add_option("--initial-size", type="int", help="Number of papers to include in the initial walk", metavar="INT", default=80)
 
     (options, args) = parser.parse_args()
 
@@ -51,7 +51,7 @@ def parse_args() -> Args:
         dotfile=options.dotfile,
         output_file=render_file,
         roots=args[1:],
-        depth=options.depth
+        initial_size=options.initial_size
     )
 
 
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     db = PaperDb(bibdata=bibdata)
     graph = explore.initialize_graph(seeds=args.roots,
                                      biblio=bibdata,
-                                     max_size=args.depth * 40,
+                                     max_size=args.initial_size,
                                      db=db)
 
     dot_builder = GraphBuilder(bibdata=bibdata)

@@ -25,14 +25,30 @@ Infty = 2 ** 10_000
 
 
 
+def author_similarity(p1: Paper, p2: Paper) -> int:
+    total_authors = len(p1.persons["author"]) + len(p2.persons["author"])
+    authors_in_common = len(author_set(p1) & author_set(p2))
+    return authors_in_common
+
+
+
+def author_set(p1):
+    return {" ".join(p.last_names) for p in p1.persons["author"]}
+
+
+
 def initialize_graph(seeds: List[PaperId],
                      biblio: Biblio,
                      max_size: int,
                      db: PaperDb) -> Graph:
     """
     Builds the initial graph by fetching reference data from semapi.
-    This does some heuristic search to find papers that are the closest
+    This does some heuristic search to find papers that are the "closest"
     from the bibliography entries.
+
+    TODO expand on that by reweighting nodes according to eg in-degree
+        Eg the references of a widely cited paper are more important than one-off reference chains
+        References of the root should not be too overweighted
 
     :param seeds: Ids of the papers to start the search with
     :param biblio: Bib file
@@ -41,11 +57,20 @@ def initialize_graph(seeds: List[PaperId],
     :return:
     """
 
-    def weight(paper: Paper):
-        return 5 if paper not in biblio else 2
 
-    def edge_weight(src: Paper, dst: Paper) -> int:
-        return 1
+    def cost(paper: Paper):
+        return 8 if paper in biblio else 20
+
+
+    def edge_cost(src: Paper, dst: Paper) -> int:
+        base = 8
+        if src in biblio:
+            base = 6
+        elif dst in biblio:
+            base = 7
+        # the minimum edge weight must be positive
+        return base - min(author_similarity(src, dst), 3)
+
 
     open_set = PriorityQueue()
 
@@ -54,10 +79,9 @@ def initialize_graph(seeds: List[PaperId],
 
     # For node n, f_score[n] := g_score[n] + h(n). f_score[n] represents our current best guess as to
     # how short a path from start to finish can be if it goes through n.
-    f_score = {id: 5 for id in seeds}
+    f_score = {id: 8 for id in seeds}
 
     nodes = {}
-    edges = []
 
     def push(id: PaperId):
         f = f_score[id]
@@ -91,7 +115,7 @@ def initialize_graph(seeds: List[PaperId],
             continue
 
         paper = result.paper
-        nodes[paper.key] = result
+        nodes[paper_id] = result
 
         print(f'[{len(nodes)} / {max_size}] {paper.fields["title"]} (score {cur_f_score})')
 
@@ -102,14 +126,13 @@ def initialize_graph(seeds: List[PaperId],
         neighbor: Paper
         for neighbor in result.references:
             neighbor_id = semapi_id(neighbor)
-            edges.append((paper, neighbor))
 
             # tentative_gScore is the distance from start to the neighbor through current
-            tentative_g_score = g_score.get(paper_id, Infty) + edge_weight(paper, neighbor)
+            tentative_g_score = g_score.get(paper_id, Infty) + edge_cost(paper, neighbor)
             if tentative_g_score < g_score.get(neighbor_id, Infty):
                 # This path to neighbor is better than any previous one. Record it!
                 g_score[neighbor_id] = tentative_g_score
-                f_score[neighbor_id] = g_score.get(neighbor_id, Infty) + weight(neighbor)
+                f_score[neighbor_id] = g_score.get(neighbor_id, Infty) + cost(neighbor)
                 if is_not_in_open_set(neighbor):
                     push(neighbor_id)
 

@@ -29,7 +29,7 @@ class Biblio(object):
         """
         Returns whether this bib file contains the given entry.
         """
-        return entry.fields[SEMAPI_ID_FIELD] in self.id_to_bibkey \
+        return semapi_id(entry) in self.id_to_bibkey \
                or entry.key in self.bibdata.entries
 
 
