@@ -12,41 +12,45 @@ from citegraph.semapi import PaperId, PaperDb, PaperAndRefs
 Infty = 2 ** 10_000
 
 
-
-def cost(paper, biblio):
-    return 5 if paper not in biblio else 2
-
-
-
-def astar(seeds: List[Paper],
-          weight_fun: Callable[[Paper, Biblio], int],
+def astar(seeds: List[PaperId],
           builder: GraphBuilder,
           max_size: int,
           db: PaperDb):
-    def h(paper: Paper):
-        return weight_fun(paper, builder.bibdata)
+    """
+    Builds the initial graph by fetching reference data from semapi.
+    This does some heuristic search to find papers that are the closest
+    from the bibliography entries.
 
+    :param seeds: Ids of the papers to start the search with
+    :param builder: Graph builder
+    :param max_size: Maximum number of nodes
+    :param db: API to get references
+    :return:
+    """
 
-    open_set = PriorityQueue()
+    biblio = builder.bibdata
 
-    # For node n, g_score[n] is the cost of the best path from start to n currently known.
-    g_score = {e.key: 0 for e in seeds}
-
-    # For node n, f_score[n] := g_score[n] + h(n). f_score[n] represents our current best guess as to
-    # how short a path from start to finish can be if it goes through n.
-    f_score = {e.key: h(e) for e in seeds}
-
-    nodes = {}
-    edges = []
-
+    def weight(paper: Paper):
+        return 5 if paper not in biblio else 2
 
     def edge_weight(src: Paper, dst: Paper) -> int:
         return 1  # TODO
 
+    open_set = PriorityQueue()
 
-    def push(stub: Paper):
-        f = f_score[stub.key]
-        open_set.put((f, semapi_id(stub)))
+    # For node n, g_score[n] is the cost of the best path from start to n currently known.
+    g_score = {id: 0 for id in seeds}
+
+    # For node n, f_score[n] := g_score[n] + h(n). f_score[n] represents our current best guess as to
+    # how short a path from start to finish can be if it goes through n.
+    f_score = {id: 5 for id in seeds}
+
+    nodes = {}
+    edges = []
+
+    def push(id: PaperId):
+        f = f_score[id]
+        open_set.put((f, id))
 
 
     def is_not_in_open_set(p: Paper):
@@ -86,16 +90,17 @@ def astar(seeds: List[Paper],
 
         neighbor: Paper
         for neighbor in result.references:
+            neighbor_id = semapi_id(neighbor)
             edges.append((paper, neighbor))
 
             # tentative_gScore is the distance from start to the neighbor through current
-            tentative_g_score = g_score.get(paper.key, Infty) + edge_weight(paper, neighbor)
-            if tentative_g_score < g_score.get(neighbor.key, Infty):
+            tentative_g_score = g_score.get(paper_id, Infty) + edge_weight(paper, neighbor)
+            if tentative_g_score < g_score.get(neighbor_id, Infty):
                 # This path to neighbor is better than any previous one. Record it!
-                g_score[neighbor.key] = tentative_g_score
-                f_score[neighbor.key] = g_score.get(neighbor.key, Infty) + h(neighbor)
+                g_score[neighbor_id] = tentative_g_score
+                f_score[neighbor_id] = g_score.get(neighbor_id, Infty) + weight(neighbor)
                 if is_not_in_open_set(neighbor):
-                    push(neighbor)
+                    push(neighbor_id)
 
     for paper in nodes.values():
         builder.add_paper(paper)

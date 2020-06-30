@@ -62,10 +62,9 @@ if __name__ == "__main__":
     bibdata = Biblio.from_file(args.bibfile)
     dot_builder = GraphBuilder(bibdata=bibdata)
     db = PaperDb(bibdata=bibdata)
-    explore.astar(seeds=[db.fetch_or_err(id).paper for id in args.roots],
+    explore.astar(seeds=args.roots,
                   max_size=args.depth * 40,
                   builder=dot_builder,
-                  weight_fun=explore.cost,
                   db=db)
 
     if args.dotfile:
