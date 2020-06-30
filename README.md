@@ -6,6 +6,8 @@ of a bibtex file to determine what you're interested in.
 
 This uses the semanticscholar API to fetch references for articles.
 
+TODO visuals
+
 ### Customizing graph appearance
 
 
