@@ -337,10 +337,6 @@ def smart_fetch(seeds: List[PaperId],
     # For node n, g_score[n] is the cost of the best path from start to n currently known.
     g_score = {p.id: 0 for p in roots}
 
-    # For node n, f_score[n] := g_score[n] + h(n). f_score[n] represents our current best guess as to
-    # how short a path from start to finish can be if it goes through n.
-    f_score = {p.id: 1 for p in roots}
-
     # todo roots should probably be added to the graph eagerly,
     #  and their connections figured out as initialization state
     queue.push_many(roots, score_fun=degree_of_interest)
@@ -371,7 +367,6 @@ def smart_fetch(seeds: List[PaperId],
             best_g_score = min(tentative_g_score, cur_g_score)
             if cur_g_score != best_g_score:
                 g_score[neighbor_id] = best_g_score
-                f_score[neighbor_id] = best_g_score + cost(neighbor)
 
         api_diff_cache = {}
         queue.recompute(neighbors, score_fun=degree_of_interest)
