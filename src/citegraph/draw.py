@@ -9,10 +9,6 @@ from citegraph.model import *
 from abc import ABCMeta, abstractmethod
 
 UNKNOWN_PERSON = Person(string="Unknown von Nowhere")
-READ_BIB_KEY = "_read"
-
-DOT_FORMAT = "dot"
-
 
 
 class GraphRenderer(object):
@@ -21,9 +17,12 @@ class GraphRenderer(object):
     def add_node(self, paper: Paper):
         pass
 
-
     @abstractmethod
     def add_edge(self, src: Paper, dst: Paper):
+        pass
+
+    @abstractmethod
+    def render(self, filename, render_format):
         pass
 
 
@@ -40,6 +39,9 @@ class StylingInfo(object):
                 doc = yaml.load(file)
                 self.categorize(doc)
 
+    @classmethod
+    def supported_formats(cls):
+        return [*g.FORMATS, "dot"]
 
     def add_tag(self, name, attrs, selector_fun):
         self._tags[name] = attrs
@@ -82,6 +84,23 @@ class StylingInfo(object):
 
 
 
+def make_label(entry: Paper):
+    fields = entry.fields
+    title = fields["title"]
+    title = "\n".join(textwrap.wrap(title, width=20))
+
+    first_author: Person = next(iter(entry.authors), None) or UNKNOWN_PERSON
+
+    label = "<<B>%s" % html.escape(first_author.last_names[0])
+    if "year" in fields:
+        label += " (%s)" % fields["year"]
+
+    label += "</B><BR/>" + html.escape(title).replace("\n", "<BR/>") + ">"
+
+    return label
+
+
+
 class DotGraphRenderer(GraphRenderer):
 
     def __init__(self,
@@ -92,6 +111,10 @@ class DotGraphRenderer(GraphRenderer):
         self.bibdata = bibdata
         self.styling = styling
 
+    @classmethod
+    def supported_formats(cls):
+        return ["gexf"]
+
 
     def get_node_attributes(self, paper: Paper):
         return {
@@ -100,26 +123,10 @@ class DotGraphRenderer(GraphRenderer):
         }
 
 
-    def make_label(self, entry: Paper):
-        fields = entry.fields
-        title = fields["title"]
-        title = "\n".join(textwrap.wrap(title, width=20))
-
-        first_author: Person = next(iter(entry.authors), None) or UNKNOWN_PERSON
-
-        label = "<<B>%s" % html.escape(first_author.last_names[0])
-        if "year" in fields:
-            label += " (%s)" % fields["year"]
-
-        label += "</B><BR/>" + html.escape(title).replace("\n", "<BR/>") + ">"
-
-        return label
-
-
     def add_node(self, paper: Paper):
 
         self.dot.node(name=paper.id,
-                      label=self.make_label(paper),
+                      label=make_label(paper),
                       **self.get_node_attributes(paper))
 
 
@@ -151,3 +158,54 @@ class DotGraphRenderer(GraphRenderer):
             print("Rendering...")
             self.dot.render(filename=filename, format=render_format)
             print("Rendered to " + filename + "." + render_format)
+
+
+
+class GephiGraphRenderer(GraphRenderer):
+
+    def __init__(self):
+        self.nodes = []
+        self.edges = []
+
+    @classmethod
+    def supported_formats(cls):
+        return ["gexf"]
+
+
+    def add_node(self, paper: Paper):
+        self.nodes.append(
+            f"<node id='{paper.id}' label='{make_label(paper)}' />"
+        )
+
+
+    def add_edge(self, src: Paper, dst: Paper):
+        self.edges.append(
+            f"<edge id='{len(self.edges)}' source='{src.id}' target='{dst.id}' />"
+        )
+
+
+    def render(self, filename, render_format):
+        assert render_format in ["gexf", "gephi"], f"Unsupported format {render_format}"
+
+        with open('w', filename) as f:
+            f.write("""
+
+<?xml version="1.0" encoding="UTF-8"?>
+<gexf xmlns="http://www.gexf.net/1.2draft" version="1.2">
+    <graph mode="static" defaultedgetype="directed">
+        <nodes>
+            {nodes}
+        </nodes>
+        <edges>
+            {edges}
+        </edges>
+    </graph>
+</gexf>
+""".format_map({
+                "nodes": ("\n" + ' ' * 4 * 3).join(self.nodes),
+                "edges": ("\n" + ' ' * 4 * 3).join(self.edges)
+            }))
+
+
+SUPPORTED_FORMATS = [*DotGraphRenderer.supported_formats(),
+                     *GephiGraphRenderer.supported_formats()]

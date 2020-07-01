@@ -7,6 +7,7 @@ from citegraph.semapi import PaperId, PaperDb, PaperAndRefs
 
 import concurrent.futures as futures
 
+
 class Graph(object):
 
     def __init__(self, nodes: Dict[PaperId, PaperAndRefs]):

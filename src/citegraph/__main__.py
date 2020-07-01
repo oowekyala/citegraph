@@ -1,32 +1,23 @@
-import os
+from pathlib import Path
 
 import citegraph.explore as explore
 from citegraph.draw import *
 from citegraph.semapi import *
-
-from pathlib import Path
-
-# Generate a citation graph from a bibtex bibliography
-
-# Citations need to be filled in manually inside a `_cites` key of each bibtex entry
-# If you mention _read={true}, the node changes color
-
-# TODO
-#  * custom DOT attributes for eg books
-#  * extensible metadata in bibtex -> format options at call time
-#      eg '--tag=old->[style=dotted]', then all entries that have a key "old" are dotted
 
 DEFAULT_FORMAT = "pdf"
 
 
 def parse_args():
     import argparse
-    parser = argparse.ArgumentParser(prog="citegraph",
-                                     formatter_class=argparse.RawDescriptionHelpFormatter,
-                                     description=f"""
-    The mentioned paper IDs are the roots for the graph exploration.
-    Exploration will start from those and try to cover as much of the
-    contents of the bibliography file as possible.
+    parser = argparse.ArgumentParser(
+        prog="citegraph",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=f"""
+    Builds a citation graph from a set of initial papers. Those
+    can be specified in one of two ways:
+    - By mentioning paper IDs as positional arguments
+    - By using the --bibfile option, where at least one entry in the
+     BibTeX file has a 'paperId' field, or an arXiv ID.
 
     You can obtain a paper ID from semanticscholar.org. 
     Examples of valid ID formats:
@@ -39,10 +30,11 @@ def parse_args():
     PubMed ID   : PMID:19872477
     Corpus ID   : CorpusID:37220927
 
-
     Examples:
 
-    $ citegraph biblio.bib CorpusID:37220927
+    $ citegraph --bibfile biblio.bib CorpusID:37220927
+    $ citegraph CorpusID:37220927
+    $ citegraph CorpusID:37220927 arXiv:1705.10311
 
                           """.rstrip(),
                                      epilog="""
@@ -51,20 +43,21 @@ def parse_args():
 
     """.rstrip())
 
-    parser.add_argument("-f", "--format", help="Render format, one of %s" % g.FORMATS, metavar="FORMAT",
+    parser.add_argument("-f", "--format", help="Render format, one of %s" % SUPPORTED_FORMATS, metavar="FORMAT",
                         default=DEFAULT_FORMAT)
     parser.add_argument("-d", "--dotfile", help="Dump for generated DOT (default none)", metavar="FILE")
     parser.add_argument("-o", "--outfile", help="Path to the rendered file (default next to bib file)", metavar="FILE")
     parser.add_argument("--size", type=int, help="Size of the graph to generate", metavar="INT", default=80)
     parser.add_argument("--tags", help="Path to a yaml file containing styling info", metavar="FILE")
-    parser.add_argument("--bibfile", metavar="file.bib",
-                        help="Bibtex file, whose contents help guide the graph exploration")
-    parser.add_argument("graph_roots", metavar="ID", nargs="*",
-                        help="Paper IDs for the starting points of the graph exploration")
+    parser.add_argument("--bibfile", metavar="file.bib", help="Bibtex file, whose contents help guide the graph exploration")
+    parser.add_argument("graph_roots", metavar="ID", nargs="*", help="Paper IDs for the starting points of the graph exploration")
 
     parsed = parser.parse_args()
 
     parsed.outfile = parsed.outfile or "graph"
+
+    if parsed.format not in SUPPORTED_FORMATS:
+        parser.error(f"Unrecognized format {parsed.format}")
 
     if len(parsed.graph_roots) == 0 and not parsed.bibfile:
         parser.error("You must specify the ID of a paper, or a bibtex file that contains such ids")
@@ -87,10 +80,12 @@ if __name__ == "__main__":
                                 db=db)
 
     if graph:
-        dot_builder = DotGraphRenderer(bibdata=bibdata, styling=StylingInfo(args.tags))
+        if args.format in DotGraphRenderer.supported_formats():
+            dot_builder = DotGraphRenderer(bibdata=bibdata, styling=StylingInfo(args.tags))
+        elif args.format in GephiGraphRenderer.supported_formats():
+            dot_builder = GephiGraphRenderer()
+        else:
+            raise AssertionError(f"Wrong format {args.format}")
+
         graph.draw(dot_builder)
-
-        if args.dotfile:
-            dot_builder.render(filename=args.dotfile, render_format=DOT_FORMAT)
-
         dot_builder.render(filename=args.outfile, render_format=args.format)
