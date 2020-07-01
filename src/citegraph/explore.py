@@ -26,7 +26,7 @@ class Graph(object):
 
 
 
-Infty = 2 ** 10_000
+Infty = 2 ** 1000
 
 
 
@@ -36,7 +36,7 @@ def authors_in_common(p1: Paper, p2: Paper) -> int:
 
 
 def authors_similarity(p1: Paper, p2: Paper) -> float:
-    return authors_in_common(p1, p2) / min(len(p1.authors), len(p2.authors))
+    return (1 + authors_in_common(p1, p2)) / (1 + min(len(p1.authors), len(p2.authors)))
 
 
 
@@ -183,14 +183,14 @@ class ScoreQueue(object):
         self.nodes = nodes
 
 
-    def push(self, p: PaperAndRefs, score: float, add_to_nodes=True):
+    def push(self, p: Paper, score: float, add_to_nodes=True):
         if add_to_nodes:
             self.nodes[p.id] = p
         self.q.put((-score, p.id))
         return p
 
 
-    def push_many(self, ps: Iterable[PaperAndRefs], score_fun):
+    def push_many(self, ps: Iterable[Paper], score_fun):
         for p in ps:
             self.nodes[p.id] = p
 
@@ -204,7 +204,7 @@ class ScoreQueue(object):
         return -score, self.nodes[id]
 
 
-    def recompute(self, new_items: List[PaperAndRefs], score_fun):
+    def recompute(self, new_items: List[Paper], score_fun):
         lst = set(new_items)
         while self.q.qsize() > 0:
             (_, item) = self.pop()
@@ -234,7 +234,7 @@ def smart_fetch(seeds: List[PaperId],
     :return:
     """
 
-    params = Params(api_weight=2, beta=1, distance_penalty=-1.5, diffusion_factor=0.5)
+    params = Params(api_weight=2, beta=1, distance_penalty=-2, diffusion_factor=0.5)
 
     # Complete the given seeds with seeds from the bibtex file
     seeds = {*seeds, *seeds_in_bib(biblio)}
@@ -255,7 +255,24 @@ def smart_fetch(seeds: List[PaperId],
             print("API limit reached, aborting")
 
 
-    def api(p: PaperAndRefs):
+    def edge_disinterest(src: Paper, dst: Paper) -> float:
+        """ > 0"""
+        max_disinterest = 5
+        return 1 + max_disinterest * (1 - authors_similarity(src, dst))
+
+
+    citations = {}
+
+
+    def add_ref(src, dst):
+        """Record that paper src cites paper dst."""
+        if dst in citations:
+            citations[dst.id].add(src.id)
+        else:
+            citations[dst.id] = {src.id}
+
+
+    def api(p: Paper) -> float:
         """a-priori interest in the paper"""
         if p.id == 'bdc3d618db015b2f17cd76224a942bfdfc36dc73':
             # https://www.semanticscholar.org/paper/Intravenous-Oxycodone-Versus-Other-Intravenous-for-Raff-Belbachir/bdc3d618db015b2f17cd76224a942bfdfc36dc73
@@ -264,60 +281,27 @@ def smart_fetch(seeds: List[PaperId],
 
         # TODO topicalness * influence
 
-        base = 2
+        base = 3 * len([id for id in citations.get(p.id, set()) if id in graph_nodes])
         # if p.paper.year:
         #     citations_per_year = p.in_degree / (1 + 2020 - int(p.paper.year))
         #     base = citations_per_year
         # else:
         #     base = p.in_degree / (1 + p.out_degree)
 
-        return base * 3 if p.paper in biblio else base
+        return base
+        return base * 3 if p in biblio else base
 
 
-    def edge_disinterest(src: PaperAndRefs, dst: PaperAndRefs) -> float:
-        """ > 0"""
-        max_disinterest = 5
-        return 1 + max_disinterest * (1 - authors_similarity(src.paper, dst.paper))
-
-
-    # This caches already computed values to stabilize the api diff, also it avoids
-    # infinite recursion on cycles
-    api_diff_cache = {}
-
-    def api_diff(p: PaperAndRefs) -> float:
-        """Differential a-priori interest. Takes into account the interest values of the
-        (as of yet known) neighbors of the paper.
-        """
-        if p.id in api_diff_cache:
-            return api_diff_cache[p.id]
-
-        p_api = api(p)
-        api_diff_cache[p.id] = p_api
-        # todo better concept of "topicalness"
-        #   nodes that are in the graph should be better weighted
-        #   irrelevant neighbors should be penalized
-        neighbor_interest = max((api_diff(nodes[ref.id]) / edge_disinterest(p, nodes[ref.id])
-                                 for ref in [*p.references, *p.citations] if ref.id in nodes),
-                                default=0)
-
-        new_val = max(p_api, params.diffusion_factor * neighbor_interest)
-        api_diff_cache[p.id] = new_val
-        return new_val
-
-
-    def cost(paper: PaperAndRefs):
+    def cost(paper: Paper):
         return 1
 
 
-    def distance_from_focal(p: PaperAndRefs):
+    def distance_from_focal(p: Paper):
         return g_score.get(p.id, 10)
 
 
-    def degree_of_interest(p: PaperAndRefs) -> float:
-        # α⋅APIdiff(x) + β⋅UIdiff(x,z) + γ⋅D(x,y)
-        # todo user interest
-        return params.api_weight * api_diff(p) \
-               + params.beta * 0 \
+    def degree_of_interest(p: Paper) -> float:
+        return params.api_weight * api(p) \
                + params.distance_penalty * distance_from_focal(p)
 
 
@@ -325,7 +309,7 @@ def smart_fetch(seeds: List[PaperId],
         return queue.is_empty or request_failures > FAILURE_LIMIT
 
 
-    nodes: Dict[PaperId, PaperAndRefs] = {}
+    nodes: Dict[PaperId, Paper] = {}
 
     queue = ScoreQueue(nodes)
 
@@ -341,34 +325,47 @@ def smart_fetch(seeds: List[PaperId],
     #  and their connections figured out as initialization state
     queue.push_many(roots, score_fun=degree_of_interest)
 
+
     while not is_done():
         (cur_doi, best) = queue.pop()
 
         if best.id in graph_nodes:
             continue
 
+        result: Optional[PaperAndRefs] = db.fetch_from_id(best.id)
+
+        if not result:
+            print("Scholar doesn't know paper with id %s" % best.id)
+            request_failures += 1
+            # todo cleanup reference count?
+            if request_failures > FAILURE_LIMIT:
+                print("API limit reached, aborting")
+                break
+            continue
+
+        best = result
         graph_nodes[best.id] = best
 
-        print(f'[{len(graph_nodes)} / {max_size} / {len(nodes)}] (DOI {cur_doi}) {best.paper.title} ')
+        print(f'[{len(graph_nodes)} / {max_size} / {len(nodes)}] (DOI {cur_doi}) {best.title} ')
         if len(graph_nodes) >= max_size:
             print("Hit max size threshold")
             break
 
-        neighbors = db.batch_fetch([p.id for p in best.references], exhandler=exception_handler)
+        for citing in best.citations:
+            nodes[citing.id] = citing
+            add_ref(citing, best)
 
-        # This part is specific to the distance calculation
-        # FIXME this doesn't explore everyone
-        for neighbor in neighbors:
-            neighbor_id = neighbor.id
+        for cited in best.references:
+            nodes[cited.id] = cited
+            add_ref(best, cited)
 
             # tentative_gScore is the distance from start to the neighbor through current
-            tentative_g_score = g_score.get(best.id, Infty) + edge_disinterest(best, neighbor)
-            cur_g_score = g_score.get(neighbor_id, Infty)
+            tentative_g_score = g_score.get(best.id, Infty) + cost(cited) + edge_disinterest(best, cited)
+            cur_g_score = g_score.get(cited.id, Infty)
             best_g_score = min(tentative_g_score, cur_g_score)
             if cur_g_score != best_g_score:
-                g_score[neighbor_id] = best_g_score
+                g_score[cited.id] = best_g_score
 
-        api_diff_cache = {}
-        queue.recompute(neighbors, score_fun=degree_of_interest)
+        queue.recompute([*best.references, *best.citations], score_fun=degree_of_interest)
 
     return Graph(graph_nodes)

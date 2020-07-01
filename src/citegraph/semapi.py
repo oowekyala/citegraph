@@ -14,15 +14,17 @@ API_URL = 'http://api.semanticscholar.org/v1'
 
 
 
-class PaperAndRefs(NamedTuple):
-    paper: Paper
-    references: List[Paper]
-    citations: List[Paper]
+class PaperAndRefs(Paper):
+
+    def __init__(self, references, citations, paper):
+        super().__init__(fields=paper.fields, authors=paper.authors, type_=paper.type_, bibtex_id=paper.bibtex_id)
+        self.references: List[Paper] = references
+        self.citations: List[Paper] = citations
 
 
     @property
-    def id(self):
-        return self.paper.id
+    def paper(self):
+        return self
 
 
     @property
@@ -34,14 +36,11 @@ class PaperAndRefs(NamedTuple):
     def out_degree(self):
         return len(self.references)
 
-    def __repr__(self):
-        return str(self.paper)
-
     def __hash__(self):
         return hash(id)
 
     def __eq__(self, other):
-        return isinstance(other, PaperAndRefs) and id == other.id
+        return isinstance(other, Paper) and id == other.id
 
 
 class PaperDb(object):
@@ -113,6 +112,7 @@ class PaperDb(object):
                                   references=[self.bibdata.make_entry(ref) for ref in paper_dict["references"]],
                                   citations=[self.bibdata.make_entry(ref) for ref in paper_dict["citations"]]
                                   )
+            result.id = paper_dict["paperId"]
         self.memcache[paper_id] = result
         return result
 

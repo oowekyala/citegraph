@@ -17,7 +17,7 @@ class Paper(object):
         self.fields = fields
         self.authors = authors
         self.type_ = type_
-        self.id = bibtex_id or fields.get(SEMAPI_ID_FIELD, None)
+        self.id = fields.get(SEMAPI_ID_FIELD, None) or bibtex_id
         self.bibtex_id = bibtex_id
 
 
@@ -83,7 +83,6 @@ class Biblio(object):
             bibtex_entry.id = paper_id
             self.id_to_bibkey[paper_id] = bibtex_entry.bibtex_id
             # print("  Found key %s in bib file" % bibtex_entry.key)
-            bibtex_entry.id = paper_id
             bibtex_entry.fields[ABSTRACT_FIELD] = paper_dict.get("abstract", "")
             return bibtex_entry
         else:
