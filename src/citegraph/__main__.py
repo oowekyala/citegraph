@@ -51,20 +51,25 @@ def parse_args():
 
     """.rstrip())
 
-    parser.add_argument("-f", "--format", help="Render format, one of %s" % g.FORMATS, metavar="FORMAT", default=DEFAULT_FORMAT)
+    parser.add_argument("-f", "--format", help="Render format, one of %s" % g.FORMATS, metavar="FORMAT",
+                        default=DEFAULT_FORMAT)
     parser.add_argument("-d", "--dotfile", help="Dump for generated DOT (default none)", metavar="FILE")
     parser.add_argument("-o", "--outfile", help="Path to the rendered file (default next to bib file)", metavar="FILE")
     parser.add_argument("--size", type=int, help="Size of the graph to generate", metavar="INT", default=80)
     parser.add_argument("--tags", help="Path to a yaml file containing styling info", metavar="FILE")
-
-    parser.add_argument("bibfile", metavar="file.bib", help="Bibtex file")
-    parser.add_argument("graph_roots", metavar="ID", nargs="*", help="Paper IDs")
+    parser.add_argument("--bibfile", metavar="file.bib",
+                        help="Bibtex file, whose contents help guide the graph exploration")
+    parser.add_argument("graph_roots", metavar="ID", nargs="*",
+                        help="Paper IDs for the starting points of the graph exploration")
 
     parsed = parser.parse_args()
 
-    parsed.outfile = parsed.outfile or os.path.splitext(parsed.bibfile)[0]
+    parsed.outfile = parsed.outfile or "graph"
 
-    if not Path(parsed.bibfile).is_file():
+    if len(parsed.graph_roots) == 0 and not parsed.bibfile:
+        parser.error("You must specify the ID of a paper, or a bibtex file that contains such ids")
+
+    if parsed.bibfile and not Path(parsed.bibfile).is_file():
         parser.error(f"Bibtex file does not exist: {parsed.bibfile}")
 
     return parsed
@@ -74,7 +79,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    bibdata = Biblio.from_file(args.bibfile)
+    bibdata = Biblio.from_file(args.bibfile) if args.bibfile else Biblio.empty()
     db = PaperDb(bibdata=bibdata)
     graph = explore.smart_fetch(seeds=args.graph_roots,
                                 biblio=bibdata,

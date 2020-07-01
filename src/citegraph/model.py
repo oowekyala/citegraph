@@ -96,7 +96,12 @@ class Biblio(object):
             authors = [bibtex.Person(author["name"]) for author in paper_dict["authors"]]
             return Paper(type_="article", authors=authors, fields=fields)
 
+
     @staticmethod
     def from_file(filename) -> 'Biblio':
         return Biblio(BibParser().parse_file(filename))
 
+
+    @staticmethod
+    def empty() -> 'Biblio':
+        return Biblio(bibtex.BibliographyData())

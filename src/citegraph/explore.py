@@ -54,13 +54,7 @@ def seeds_in_bib(biblio: Biblio):
 
 class Params(NamedTuple):
     api_weight: float
-    beta: float
     distance_penalty: float
-    diffusion_factor: float
-    """
-    The parameter δ (0 ≤ δ < 1) determines the diffusion factor, where values closer to 1 increase 
-    the diffusion.
-    """
 
 def smart_fetch(seeds: List[PaperId],
                 biblio: Biblio,
@@ -78,7 +72,7 @@ def smart_fetch(seeds: List[PaperId],
     :return:
     """
 
-    params = Params(api_weight=2, beta=1, distance_penalty=-2, diffusion_factor=0.5)
+    params = Params(api_weight=3, distance_penalty=-2)
 
     # Complete the given seeds with seeds from the bibtex file
     seeds = {*seeds, *seeds_in_bib(biblio)}
@@ -89,7 +83,6 @@ def smart_fetch(seeds: List[PaperId],
 
     request_failures = 0
     FAILURE_LIMIT = 10
-
 
     def exception_handler(request, exception):
         nonlocal request_failures
@@ -106,19 +99,18 @@ def smart_fetch(seeds: List[PaperId],
 
 
     citations = {}  # predecessors
-    references = {} # successors
+    references = {}  # successors
+
+    def update_multimap(map, k, v):
+        if k in map:
+            map[k].add(v)
+        else:
+            map[k] = {v}
 
     def add_ref(src, dst):
         """Record that paper src cites paper dst."""
-        if dst in citations:
-            citations[dst.id].add(src.id)
-        else:
-            citations[dst.id] = {src.id}
-
-        if src in references:
-            references[src.id].add(dst.id)
-        else:
-            references[src.id] = {dst.id}
+        update_multimap(citations, dst.id, src.id)
+        update_multimap(references, src.id, dst.id)
 
 
     def api(p: Paper) -> float:
@@ -130,6 +122,7 @@ def smart_fetch(seeds: List[PaperId],
 
         # TODO topicalness * influence
 
+        # TODO discount very influential papers
         base = len(graph_nodes.keys() & citations.get(p.id, set())) + \
                len(graph_nodes.keys() & references.get(p.id, set()))
 
@@ -147,38 +140,69 @@ def smart_fetch(seeds: List[PaperId],
 
 
     def distance_from_focal(p: Paper):
-        return g_score.get(p.id, 10)
+        return distance_to_root.get(p.id, 10)
 
 
     def degree_of_interest(p: Paper) -> float:
         return params.api_weight * api(p) \
                + params.distance_penalty * distance_from_focal(p)
 
+
+    def update_graph(cur):
+        for citing in cur.citations:
+            nodes[citing.id] = citing
+            add_ref(citing, cur)
+
+        for cited in cur.references:
+            nodes[cited.id] = cited
+            add_ref(cur, cited)
+
+            # Try to see if passing through the new neighbor is a better path from the root to 'best'
+            best_dist = distance_to_root.get(cur.id, Infty)
+            tentative_dist = distance_to_root.get(cited.id, Infty) + edge_disinterest(cited, cur)
+            if tentative_dist < best_dist:
+                distance_to_root[cur.id] = tentative_dist
+                best_dist = tentative_dist
+
+            # Similarly, try to see if passing through 'best' is a better path from the root to the neighbor
+            tentative_dist = best_dist + edge_disinterest(cur, cited)
+            cur_dist = distance_to_root.get(cited.id, Infty)
+            if tentative_dist < cur_dist:
+                distance_to_root[cited.id] = tentative_dist
+
+
     # fetch the roots
     roots = db.batch_fetch(seeds, exhandler=exception_handler)
 
     # For node n, g_score[n] is the cost of the best path from start to n currently known.
-    g_score = {p.id: 0 for p in roots}
+    distance_to_root = {p.id: 0 for p in roots}
     nodes = {p.id: p for p in roots}
     graph_nodes = {}
 
+    for r in roots:
+        update_graph(r)
+
+    failed_ids = set([])
+
     while True:
-        (best, cur_doi) = max([(n, degree_of_interest(n)) for n in nodes.values() if n.id not in graph_nodes],
+        (best, cur_doi) = max([(n, degree_of_interest(n))
+                               for n in nodes.values()
+                               if n.id not in graph_nodes
+                               and n.id not in failed_ids],
                               key=lambda t: t[1],
                               default=(None, 0))
         if not best:
+            print("No more nodes to explore")
             break  # no more nodes
-
-        if best.id in graph_nodes:
-            continue
 
         pre_id = best.id
         result: Optional[PaperAndRefs] = db.fetch_from_id(best.id)
 
         if not result:
             print("Scholar doesn't know paper with id %s" % best.id)
+            del nodes[best.id]
+            failed_ids.add(best.id)
             request_failures += 1
-            # todo cleanup reference count?
             if request_failures > FAILURE_LIMIT:
                 print("API limit reached, aborting")
                 break
@@ -188,29 +212,14 @@ def smart_fetch(seeds: List[PaperId],
         graph_nodes[best.id] = best
         if pre_id != best.id:
             del nodes[pre_id]
-            # citations[best.id] = citations[pre_id]
-            # del citations[pre_id]
-            # references[best.id] = references[pre_id]
-            # del references[pre_id]
+            if pre_id in graph_nodes:
+                del graph_nodes[pre_id]
 
         print(f'[{len(graph_nodes)} / {max_size} / {len(nodes)}] (DOI {cur_doi}) {best.title} ')
         if len(graph_nodes) >= max_size:
             print("Hit max size threshold")
             break
 
-        for citing in best.citations:
-            nodes[citing.id] = citing
-            add_ref(citing, best)
-
-        for cited in best.references:
-            nodes[cited.id] = cited
-            add_ref(best, cited)
-
-            # tentative_gScore is the distance from start to the neighbor through current
-            tentative_g_score = g_score.get(best.id, Infty) + cost(cited) + edge_disinterest(best, cited)
-            cur_g_score = g_score.get(cited.id, Infty)
-            best_g_score = min(tentative_g_score, cur_g_score)
-            if cur_g_score != best_g_score:
-                g_score[cited.id] = best_g_score
+        update_graph(best)
 
     return Graph(graph_nodes)

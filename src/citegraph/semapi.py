@@ -64,38 +64,6 @@ class PaperDb(object):
                 exhandler(id, None)
         return res
 
-        # fixme This is the parallel code, which unfortunately doesn't use caching
-
-        requests = [PaperDb.__get_data("paper", id) for id in ids if id not in self.memcache]
-
-        responses = grequests.map(requests, exception_handler=exhandler)
-
-        results = [self.memcache[id] for id in ids if id in self.memcache]
-
-        for r in responses:
-            print(r)
-            data = {}
-            if r and r.status_code == 200:
-                data = r.json()
-                if len(data) == 1 and 'error' in data:
-                    data = {}
-            elif r and r.status_code == 429:
-                raise ConnectionRefusedError('HTTP status 429 Too Many Requests.')
-
-            if len(data) == 0:
-                exhandler(r, None)
-                continue
-
-            paper = PaperAndRefs(paper=self.bibdata.make_entry(data),
-                                 references=[self.bibdata.make_entry(ref) for ref in data["references"]],
-                                 citations=[self.bibdata.make_entry(ref) for ref in data["citations"]]
-                                 )
-            self.memcache[paper.id] = paper
-            results.append(paper)
-
-        return results
-
-
     def fetch_from_id(self, paper_id: PaperId) -> Optional[PaperAndRefs]:
         """Returns an entry a"""
         if paper_id in self.memcache:
