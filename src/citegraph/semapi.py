@@ -34,6 +34,15 @@ class PaperAndRefs(NamedTuple):
     def out_degree(self):
         return len(self.references)
 
+    def __repr__(self):
+        return str(self.paper)
+
+    def __hash__(self):
+        return hash(id)
+
+    def __eq__(self, other):
+        return isinstance(other, PaperAndRefs) and id == other.id
+
 
 class PaperDb(object):
     # Cache requests made to semanticscholar, since they are idempotent
@@ -48,7 +57,7 @@ class PaperDb(object):
     def batch_fetch(self, ids: Iterable[PaperId], exhandler) -> List[PaperAndRefs]:
         # TODO parallelize
         res = []
-        for id in ids:
+        for id in set(ids):
             r = self.fetch_from_id(id)
             if r:
                 res.append(r)
@@ -93,7 +102,9 @@ class PaperDb(object):
         if paper_id in self.memcache:
             return self.memcache[paper_id]
 
+        # print(f"Requesting {paper_id}...", end="")
         paper_dict: Dict = semanticscholar.paper(paper_id)
+        # print(f" done.")
 
         if len(paper_dict.keys()) == 0:
             result = None

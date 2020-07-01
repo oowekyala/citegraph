@@ -35,6 +35,8 @@ class Paper(object):
     def __hash__(self):
         return hash(self.id) if self.id else hash(self.title)
 
+    def __str__(self):
+        return f"{self.year} {self.title}"
 
 
 class Biblio(object):
