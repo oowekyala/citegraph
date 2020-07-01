@@ -1,0 +1,7 @@
+#!/bin/bash
+# wrapper script to launch on linux
+
+# directory of the script
+DIR=`dirname $(realpath "${BASH_SOURCE[0]}")`
+
+PYTHONPATH="$DIR/../src" python3 -m citegraph "$@"

@@ -39,10 +39,6 @@ class StylingInfo(object):
                 doc = yaml.load(file)
                 self.categorize(doc)
 
-    @classmethod
-    def supported_formats(cls):
-        return [*g.FORMATS, "dot"]
-
     def add_tag(self, name, attrs, selector_fun):
         self._tags[name] = attrs
         self.selectors_by_tag[name] = selector_fun
@@ -113,7 +109,7 @@ class DotGraphRenderer(GraphRenderer):
 
     @classmethod
     def supported_formats(cls):
-        return ["gexf"]
+        return [*g.FORMATS, "dot"]
 
 
     def get_node_attributes(self, paper: Paper):
@@ -152,7 +148,7 @@ class DotGraphRenderer(GraphRenderer):
 
     def render(self, filename, render_format):
         if render_format == "dot":
-            self.dot.save(filename=filename)
+            self.dot.save(filename=filename + ".dot")
             print("DOT saved in " + filename)
         else:
             print("Rendering...")
@@ -187,7 +183,7 @@ class GephiGraphRenderer(GraphRenderer):
     def render(self, filename, render_format):
         assert render_format in ["gexf", "gephi"], f"Unsupported format {render_format}"
 
-        with open('w', filename) as f:
+        with open('w', filename + ".gexf") as f:
             f.write("""
 
 <?xml version="1.0" encoding="UTF-8"?>

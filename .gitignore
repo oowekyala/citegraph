@@ -236,3 +236,4 @@ dmypy.json
 src/semapi.sqlite
 .idea/
 citegraph.iml
+*.sqlite

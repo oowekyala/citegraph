@@ -45,12 +45,15 @@ def parse_args():
 
     parser.add_argument("-f", "--format", help="Render format, one of %s" % SUPPORTED_FORMATS, metavar="FORMAT",
                         default=DEFAULT_FORMAT)
-    parser.add_argument("-d", "--dotfile", help="Dump for generated DOT (default none)", metavar="FILE")
-    parser.add_argument("-o", "--outfile", help="Path to the rendered file (default next to bib file)", metavar="FILE")
+    parser.add_argument("-o", "--outfile", help="Path to the rendered file, without extension (default 'graph')",
+                        metavar="FILE")
     parser.add_argument("--size", type=int, help="Size of the graph to generate", metavar="INT", default=80)
     parser.add_argument("--tags", help="Path to a yaml file containing styling info", metavar="FILE")
-    parser.add_argument("--bibfile", metavar="file.bib", help="Bibtex file, whose contents help guide the graph exploration")
-    parser.add_argument("graph_roots", metavar="ID", nargs="*", help="Paper IDs for the starting points of the graph exploration")
+    parser.add_argument("--old", help="Use old generation scheme", action="store_true")
+    parser.add_argument("-b", "--bib", dest="bibfile", metavar="file.bib",
+                        help="Bibtex file, whose contents help guide the graph exploration")
+    parser.add_argument("graph_roots", metavar="ID", nargs="*",
+                        help="Paper IDs for the starting points of the graph exploration")
 
     parsed = parser.parse_args()
 
@@ -74,10 +77,11 @@ if __name__ == "__main__":
 
     bibdata = Biblio.from_file(args.bibfile) if args.bibfile else Biblio.empty()
     db = PaperDb(bibdata=bibdata)
-    graph = explore.smart_fetch(seeds=args.graph_roots,
-                                biblio=bibdata,
-                                max_size=args.size,
-                                db=db)
+    fun = explore.initialize_graph if args.old else explore.smart_fetch
+    graph = fun(seeds=args.graph_roots,
+                biblio=bibdata,
+                max_size=args.size,
+                db=db)
 
     if graph:
         if args.format in DotGraphRenderer.supported_formats():
