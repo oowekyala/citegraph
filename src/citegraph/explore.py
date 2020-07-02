@@ -28,6 +28,8 @@ class Graph(object):
 
 Infty = 2 ** 1000
 
+def age(p: Paper):
+    return 2020 - int(p.year or 2000)
 
 def authors_in_common(p1: Paper, p2: Paper) -> int:
     return len(author_set(p1) & author_set(p2))
@@ -73,7 +75,7 @@ def smart_fetch(seeds: List[PaperId],
     :return:
     """
 
-    params = Params(api_weight=3, distance_penalty=-2)
+    params = Params(api_weight=1, distance_penalty=-1.5)
 
     # Complete the given seeds with seeds from the bibtex file
     seeds = {*seeds, *seeds_in_bib(biblio)}
@@ -99,8 +101,8 @@ def smart_fetch(seeds: List[PaperId],
         return 1 + max_disinterest * (1 - authors_similarity(src, dst))
 
 
-    citations = {}  # predecessors
-    references = {}  # successors
+    neighbors = {}  # merged successors + predecessors
+
 
     def update_multimap(map, k, v):
         if k in map:
@@ -108,10 +110,15 @@ def smart_fetch(seeds: List[PaperId],
         else:
             map[k] = {v}
 
+
     def add_ref(src, dst):
         """Record that paper src cites paper dst."""
-        update_multimap(citations, dst.id, src.id)
-        update_multimap(references, src.id, dst.id)
+        update_multimap(neighbors, dst.id, src.id)
+        update_multimap(neighbors, src.id, dst.id)
+
+
+    def are_neighbors(src, dst):
+        return dst.id in neighbors.get(src.id, [])
 
 
     def api(p: Paper) -> float:
@@ -119,28 +126,19 @@ def smart_fetch(seeds: List[PaperId],
         if p.id == 'bdc3d618db015b2f17cd76224a942bfdfc36dc73':
             # https://www.semanticscholar.org/paper/Intravenous-Oxycodone-Versus-Other-Intravenous-for-Raff-Belbachir/bdc3d618db015b2f17cd76224a942bfdfc36dc73
             # Buggy article (224K citations)
-            return 0
+            return -1000
 
-        # TODO topicalness * influence
+        # TODO prefer edges that cluster more
+        my_neighbors = neighbors.get(p.id, set())
+        neighbors_in_graph = graph_nodes.keys() & my_neighbors
+        num_new_edges = len(neighbors_in_graph)
 
-        # TODO discount very influential papers
-        base = len(graph_nodes.keys() & citations.get(p.id, set())) + \
-               len(graph_nodes.keys() & references.get(p.id, set()))
+        my_age = age(p)
+        avg_age_diff = sum([abs(my_age - age(graph_nodes[id])) for id in neighbors_in_graph]) / (1 + num_new_edges)
 
-        base = min(base, 5)
-
-        # if p.paper.year:
-        #     citations_per_year = p.in_degree / (1 + 2020 - int(p.paper.year))
-        #     base = citations_per_year
-        # else:
-        #     base = p.in_degree / (1 + p.out_degree)
+        base = num_new_edges / (avg_age_diff + 1)
 
         return base * 3 if p in biblio else base
-
-
-    def cost(paper: Paper):
-        return 1
-
 
     def distance_from_focal(p: Paper):
         return distance_to_root.get(p.id, 10)
@@ -187,6 +185,7 @@ def smart_fetch(seeds: List[PaperId],
 
     failed_ids = set([])
 
+    # todo dynamic programming
     while True:
         (best, cur_doi) = max([(n, degree_of_interest(n))
                                for n in nodes.values()
@@ -226,6 +225,7 @@ def smart_fetch(seeds: List[PaperId],
         update_graph(best)
 
     return Graph(graph_nodes)
+
 
 
 def initialize_graph(seeds: List[PaperId],
