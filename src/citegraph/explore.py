@@ -46,30 +46,29 @@ class Params(NamedTuple):
 
 DEFAULT_PARAMS = Params(api_weight=1,
                         distance_penalty=-1.5,
-                        degree_cut=5,
+                        degree_cut=2,
                         clustering_factor=1
                         )
 
 
 
 def clusterness(neighbors_in_graph, neighbors):
-    if len(neighbors_in_graph) == 0:
+    # https://en.wikipedia.org/wiki/Clustering_coefficient
+    num_neighbors = len(neighbors_in_graph)
+    total_possible_triplets = num_neighbors * (num_neighbors - 1) / 2
+
+    if total_possible_triplets == 0:
         return 1
 
 
     def are_neighbors(src: PaperId, dst: PaperId):
-        return dst in neighbors.get(src, [])
+        return dst in neighbors[src] if src in neighbors else False
 
 
-    closed_triplets = 0
-
-    # This `if i < j` is quite shitty, but we use sets.
-    for i, nid in enumerate(neighbors_in_graph):
-        for j, mid in enumerate(neighbors_in_graph):
-            if i < j and are_neighbors(nid, mid):
-                closed_triplets += 1
-
-    total_possible_triplets = len(neighbors_in_graph) * (len(neighbors_in_graph) + 1) / 2
+    closed_triplets = sum(1
+                          for (i, nid) in enumerate(neighbors_in_graph)
+                          for (j, mid) in enumerate(neighbors_in_graph)
+                          if i < j and are_neighbors(nid, mid))
 
     return closed_triplets / total_possible_triplets
 
@@ -165,6 +164,10 @@ def smart_fetch(seeds: List[PaperId],
             nodes[citing.id] = citing
             add_ref(citing, cur)
 
+        # Reduce the distance of articles close to the root
+        if cur in biblio:
+            distance_to_root[cur.id] = distance_to_root.get(cur.id, 0) / 2
+
         for cited in cur.references:
             nodes[cited.id] = cited
             add_ref(cur, cited)
@@ -212,12 +215,12 @@ def smart_fetch(seeds: List[PaperId],
         result: Optional[PaperAndRefs] = db.fetch_from_id(best.id)
 
         if not result:
-            print("Scholar doesn't know paper with id %s" % best.id)
+            print("[ERROR] Scholar doesn't know paper with id %s" % best.id)
             del nodes[best.id]
             failed_ids.add(best.id)
             request_failures += 1
             if request_failures > FAILURE_LIMIT:
-                print("API limit reached, aborting")
+                print("[ERROR] API limit reached, aborting")
                 break
             continue
 

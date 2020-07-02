@@ -40,19 +40,19 @@ class Graph(object):
         self.successors = {}
 
         for paper in self.nodes.values():
-            succs = {}
+            succs = set([])
             self.successors[paper.id] = succs
 
             for ref in paper.references:
                 if ref.id in self.nodes:
-                    succs[ref.id] = True
+                    succs.add(ref)
 
     # todo transitive reduction
 
     def draw(self, builder: GraphRenderer):
         for paper in sorted(self.nodes.values(), key=lambda p: p.id):
             builder.add_node(paper)
-            for ref in self.successors[paper]:
+            for ref in self.successors[paper.id]:
                 builder.add_edge(paper, ref)
 
 
