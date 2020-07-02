@@ -31,5 +31,5 @@ tags:
         
         # Select using an arbitrary python expression
         # The bibtex entry is in scope as 'paper'
-        selector: 'any(["Knuth"] == author.last_names for author in paper.persons["author"])'
+        selector: 'any("Knuth" in author.last_names for author in paper.authors)'
 ```
