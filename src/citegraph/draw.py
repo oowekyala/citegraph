@@ -1,30 +1,60 @@
 import html
-import yaml
 import textwrap
 
 import graphviz as g
+import yaml
 
 from citegraph.model import *
+from abc import abstractmethod
 
-from abc import ABCMeta, abstractmethod
 
 UNKNOWN_PERSON = Person(string="Unknown von Nowhere")
 
 
 class GraphRenderer(object):
+    """Renders a graph somewhere."""
+
 
     @abstractmethod
     def add_node(self, paper: Paper):
         pass
 
+
     @abstractmethod
     def add_edge(self, src: Paper, dst: Paper):
         pass
+
 
     @abstractmethod
     def render(self, filename, render_format):
         pass
 
+
+
+class Graph(object):
+
+    def __init__(self, nodes: Dict[PaperId, PaperAndRefs]):
+        self.nodes = nodes
+
+        # successors[p1.id][p2.id] means there is a directed edge p1 -> p2
+        self.successors = {}
+
+        for paper in self.nodes.values():
+            succs = {}
+            self.successors[paper.id] = succs
+
+            for ref in paper.references:
+                if ref.id in self.nodes:
+                    succs[ref.id] = True
+
+    # todo transitive reduction
+
+    def draw(self, builder: GraphRenderer):
+        for paper in sorted(self.nodes.values(), key=lambda p: p.id):
+            builder.add_node(paper)
+            for ref in paper.references:
+                if ref.id in self.nodes:
+                    builder.add_edge(paper, ref)
 
 
 class StylingInfo(object):

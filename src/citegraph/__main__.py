@@ -7,6 +7,7 @@ from citegraph.semapi import *
 DEFAULT_FORMAT = "pdf"
 
 
+
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(
@@ -37,7 +38,7 @@ def parse_args():
     $ citegraph CorpusID:37220927 arXiv:1705.10311
 
                           """.rstrip(),
-                                     epilog="""
+        epilog="""
 
     Report issues at https://github.com/oowekyala/citegraph                                     
 

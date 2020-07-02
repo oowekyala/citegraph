@@ -1,5 +1,6 @@
-import pybtex.database as bibtex
 from typing import NewType, List, Dict
+
+import pybtex.database as bibtex
 from pybtex.database.input.bibtex import Parser as BibParser
 
 SEMAPI_ID_FIELD = "semapi_id"
@@ -7,6 +8,7 @@ ABSTRACT_FIELD = "_abstract"
 
 Person = bibtex.Person
 
+PaperId = NewType("PaperId", str)
 
 
 class Paper(object):
@@ -37,6 +39,37 @@ class Paper(object):
 
     def __str__(self):
         return f"{self.year} {self.title}"
+
+
+
+class PaperAndRefs(Paper):
+
+    def __init__(self, references, citations, paper):
+        super().__init__(fields=paper.fields, authors=paper.authors, type_=paper.type_, bibtex_id=paper.bibtex_id)
+        self.references: List[Paper] = references
+        self.citations: List[Paper] = citations
+
+
+    @property
+    def paper(self):
+        return self
+
+
+    @property
+    def in_degree(self):
+        return len(self.citations)
+
+
+    @property
+    def out_degree(self):
+        return len(self.references)
+
+    def __hash__(self):
+        return hash(id)
+
+    def __eq__(self, other):
+        return isinstance(other, Paper) and id == other.id
+
 
 
 class Biblio(object):
@@ -105,3 +138,4 @@ class Biblio(object):
     @staticmethod
     def empty() -> 'Biblio':
         return Biblio(bibtex.BibliographyData())
+

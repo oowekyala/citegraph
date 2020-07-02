@@ -1,30 +1,9 @@
-from typing import List, Dict, Optional, Iterable, NamedTuple
 from queue import PriorityQueue
+from typing import List, Optional, NamedTuple
 
-from citegraph.model import Biblio, Paper
-from citegraph.draw import GraphRenderer
-from citegraph.semapi import PaperId, PaperDb, PaperAndRefs
-
-import concurrent.futures as futures
-
-
-class Graph(object):
-
-    def __init__(self, nodes: Dict[PaperId, PaperAndRefs]):
-        self.nodes = nodes
-
-
-    def draw(self, builder: GraphRenderer):
-        added = set([])
-        for paper in self.nodes.values():
-            title = paper.paper.fields["title"]
-            if title not in added:
-                added.add(title)
-                builder.add_node(paper.paper)
-                for ref in paper.references:
-                    if ref.id in self.nodes:
-                        builder.add_edge(paper.paper, ref)
-
+from citegraph.model import Biblio, Paper, PaperId
+from citegraph.draw import Graph
+from citegraph.semapi import PaperDb, PaperAndRefs
 
 Infty = 2 ** 1000
 
@@ -260,6 +239,7 @@ def smart_fetch(seeds: List[PaperId],
 
 
 
+# TODO remove me
 def initialize_graph(seeds: List[PaperId],
                      biblio: Biblio,
                      max_size: int,

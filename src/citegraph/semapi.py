@@ -6,41 +6,11 @@ import semanticscholar
 import requests_cache
 import concurrent.futures as futures
 
-from citegraph.model import Biblio, Paper
+from citegraph.model import Biblio, PaperAndRefs, PaperId
 
-PaperId = NewType("PaperId", str)
 
 API_URL = 'http://api.semanticscholar.org/v1'
 
-
-
-class PaperAndRefs(Paper):
-
-    def __init__(self, references, citations, paper):
-        super().__init__(fields=paper.fields, authors=paper.authors, type_=paper.type_, bibtex_id=paper.bibtex_id)
-        self.references: List[Paper] = references
-        self.citations: List[Paper] = citations
-
-
-    @property
-    def paper(self):
-        return self
-
-
-    @property
-    def in_degree(self):
-        return len(self.citations)
-
-
-    @property
-    def out_degree(self):
-        return len(self.references)
-
-    def __hash__(self):
-        return hash(id)
-
-    def __eq__(self, other):
-        return isinstance(other, Paper) and id == other.id
 
 
 class PaperDb(object):
