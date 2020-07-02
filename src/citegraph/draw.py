@@ -52,9 +52,8 @@ class Graph(object):
     def draw(self, builder: GraphRenderer):
         for paper in sorted(self.nodes.values(), key=lambda p: p.id):
             builder.add_node(paper)
-            for ref in paper.references:
-                if ref.id in self.nodes:
-                    builder.add_edge(paper, ref)
+            for ref in self.successors[paper]:
+                builder.add_edge(paper, ref)
 
 
 class StylingInfo(object):
