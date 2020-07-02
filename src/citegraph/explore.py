@@ -55,9 +55,46 @@ def seeds_in_bib(biblio: Biblio):
 
     return seeds
 
+
+
 class Params(NamedTuple):
-    api_weight: float
-    distance_penalty: float
+    api_weight: float  # > 0
+    distance_penalty: float  # < 0
+    degree_cut: int  # > 0
+    clustering_factor: float  # > 0
+
+
+
+DEFAULT_PARAMS = Params(api_weight=1,
+                        distance_penalty=-1.5,
+                        degree_cut=5,
+                        clustering_factor=1
+                        )
+
+
+
+def clusterness(neighbors_in_graph, neighbors):
+    if len(neighbors_in_graph) == 0:
+        return 1
+
+
+    def are_neighbors(src: PaperId, dst: PaperId):
+        return dst in neighbors.get(src, [])
+
+
+    closed_triplets = 0
+
+    # This `if i < j` is quite shitty, but we use sets.
+    for i, nid in enumerate(neighbors_in_graph):
+        for j, mid in enumerate(neighbors_in_graph):
+            if i < j and are_neighbors(nid, mid):
+                closed_triplets += 1
+
+    total_possible_triplets = len(neighbors_in_graph) * (len(neighbors_in_graph) + 1) / 2
+
+    return closed_triplets / total_possible_triplets
+
+
 
 def smart_fetch(seeds: List[PaperId],
                 biblio: Biblio,
@@ -75,7 +112,7 @@ def smart_fetch(seeds: List[PaperId],
     :return:
     """
 
-    params = Params(api_weight=1, distance_penalty=-1.5)
+    params = DEFAULT_PARAMS
 
     # Complete the given seeds with seeds from the bibtex file
     seeds = {*seeds, *seeds_in_bib(biblio)}
@@ -116,11 +153,6 @@ def smart_fetch(seeds: List[PaperId],
         update_multimap(neighbors, dst.id, src.id)
         update_multimap(neighbors, src.id, dst.id)
 
-
-    def are_neighbors(src, dst):
-        return dst.id in neighbors.get(src.id, [])
-
-
     def api(p: Paper) -> float:
         """a-priori interest in the paper"""
         if p.id == 'bdc3d618db015b2f17cd76224a942bfdfc36dc73':
@@ -128,15 +160,15 @@ def smart_fetch(seeds: List[PaperId],
             # Buggy article (224K citations)
             return -1000
 
-        # TODO prefer edges that cluster more
         my_neighbors = neighbors.get(p.id, set())
         neighbors_in_graph = graph_nodes.keys() & my_neighbors
         num_new_edges = len(neighbors_in_graph)
 
-        my_age = age(p)
-        avg_age_diff = sum([abs(my_age - age(graph_nodes[id])) for id in neighbors_in_graph]) / (1 + num_new_edges)
+        # my_age = age(p)
+        # avg_age_diff = sum([abs(my_age - age(graph_nodes[id])) for id in neighbors_in_graph]) / (1 + num_new_edges)
 
-        base = num_new_edges / (avg_age_diff + 1)
+        clustering = params.clustering_factor * clusterness(neighbors_in_graph, neighbors)
+        base = min(num_new_edges, params.degree_cut) * (1 + clustering)
 
         return base * 3 if p in biblio else base
 
