@@ -1,12 +1,12 @@
 import html
 import textwrap
+from abc import abstractmethod
+from typing import Dict
 
 import graphviz as g
 import yaml
 
-from citegraph.model import *
-from abc import abstractmethod
-
+from citegraph.model import Biblio, Paper, Person, PaperAndRefs, PaperId
 
 UNKNOWN_PERSON = Person(string="Unknown von Nowhere")
 

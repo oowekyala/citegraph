@@ -1,13 +1,9 @@
-from typing import NewType, List, Dict, Optional, NamedTuple, Iterable
-
-import grequests
-import semanticscholar
+from typing import Dict, Optional
 
 import requests_cache
-import concurrent.futures as futures
+import semanticscholar
 
 from citegraph.model import Biblio, PaperAndRefs, PaperId
-
 
 API_URL = 'http://api.semanticscholar.org/v1'
 
@@ -22,17 +18,6 @@ class PaperDb(object):
     def __init__(self, bibdata: Biblio):
         self.bibdata = bibdata
         self.memcache = {}
-
-    def batch_fetch(self, ids: Iterable[PaperId], exhandler) -> List[PaperAndRefs]:
-        # TODO parallelize
-        res = []
-        for id in set(ids):
-            r = self.fetch_from_id(id)
-            if r:
-                res.append(r)
-            else:
-                exhandler(id, None)
-        return res
 
     def fetch_from_id(self, paper_id: PaperId) -> Optional[PaperAndRefs]:
         """Returns an entry a"""
@@ -54,33 +39,3 @@ class PaperDb(object):
         self.memcache[paper_id] = result
         return result
 
-
-    @staticmethod
-    def __get_data(method, id, include_unknown_references=False) -> futures.Future:
-
-        '''Get data from Semantic Scholar API
-
-        :param method: 'paper' or 'author'.
-        :param id: :class:`str`.
-        :returns: data or empty :class:`dict` if not found.
-        :rtype: :class:`dict`
-        '''
-
-        method_types = ['paper', 'author']
-        if method not in method_types:
-            raise ValueError('Invalid method type. Expected one of: {}'.format(method_types))
-
-        url = '{}/{}/{}'.format(API_URL, method, id)
-        if include_unknown_references:
-            url += '?include_unknown_references=true'
-        return grequests.get(url)
-
-        #
-        # if r.status_code == 200:
-        #     data = r.json()
-        #     if len(data) == 1 and 'error' in data:
-        #         data = {}
-        # elif r.status_code == 429:
-        #     raise ConnectionRefusedError('HTTP status 429 Too Many Requests.')
-        #
-        # return data

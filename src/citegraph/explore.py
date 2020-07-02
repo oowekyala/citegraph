@@ -1,55 +1,74 @@
-from queue import PriorityQueue
-from typing import List, Optional, NamedTuple
+from typing import Optional, NamedTuple, Set
 
-from citegraph.model import Biblio, Paper, PaperId
 from citegraph.draw import Graph
+from citegraph.model import Biblio, Paper, PaperId
 from citegraph.semapi import PaperDb, PaperAndRefs
+
+
+class Params(NamedTuple):
+    """
+    Parameters of the graph exploration.
+
+    Attributes:
+    - api_weight
+
+        The weight given to the API (a-priori interest) when computing the DOI (degree of interest)
+
+    - degree_cut
+
+        Degree above which all nodes are treated equally.
+
+    - clustering_factor
+
+        Importance given to the clustering coefficient of a node when computing its API.
+
+    - distance_penalty
+
+        Coefficient applied to the distance metric before it is subtracted from the API to compute the DOI.
+        - A value > 0 means distance from the root is penalized (typical)
+        - A value of zero means distance from the root has no effect at all on DOI
+        - A value < 0 means distance from the root is rewarded
+
+    - api_failure_limit
+
+        Number of failures to tolerate from the semanticscholar API before the exploration is aborted.
+
+    - max_graph_size
+
+        Max number of nodes to include on the graph
+
+    """
+
+    distance_penalty: float = -1  # >= 0
+    degree_cut: int = 5  # > 0
+    clustering_factor: float = 1  # > 0
+    api_weight: float = 1  # > 0
+
+    api_failure_limit: int = 10
+    max_graph_size: int = 80
+
+
 
 Infty = 2 ** 1000
 
+
 def age(p: Paper):
     return 2020 - int(p.year or 2000)
+
 
 def authors_in_common(p1: Paper, p2: Paper) -> int:
     return len(author_set(p1) & author_set(p2))
 
 
 def authors_similarity(p1: Paper, p2: Paper) -> float:
-    return (1 + authors_in_common(p1, p2)) / (1 + min(len(p1.authors), len(p2.authors)))
+    num_authors = min(len(p1.authors), len(p2.authors))
+    if num_authors == 0:
+        return 1
+    return authors_in_common(p1, p2) / num_authors
 
 
 def author_set(p1):
     return {" ".join(p.last_names) for p in p1.authors}
-
-
-def seeds_in_bib(biblio: Biblio):
-    seeds = []
-    for paper in biblio:
-        if paper.paperId:
-            seeds.append(paper.paperId)
-        elif paper.journal and paper.journal.lower() == "arxiv":
-            volume: str = getattr(paper, "volume", "")
-            if volume.startswith("abs/"):
-                seeds.append("arXiv:" + volume[len("abs/"):])
-
-    return seeds
-
-
-
-class Params(NamedTuple):
-    api_weight: float  # > 0
-    distance_penalty: float  # < 0
-    degree_cut: int  # > 0
-    clustering_factor: float  # > 0
-
-
-
-DEFAULT_PARAMS = Params(api_weight=1,
-                        distance_penalty=-1.5,
-                        degree_cut=2,
-                        clustering_factor=1
-                        )
-
 
 
 def clusterness(neighbors_in_graph, neighbors):
@@ -74,40 +93,36 @@ def clusterness(neighbors_in_graph, neighbors):
 
 
 
-def smart_fetch(seeds: List[PaperId],
+def smart_fetch(seeds: Set[PaperId],
                 biblio: Biblio,
-                max_size: int,
+                params: Params,
                 db: PaperDb) -> Optional[Graph]:
     """
-    Builds the initial graph by fetching reference data from semapi.
+    Builds the graph by fetching reference data from semapi.
+
+    This starts exploration from a set of roots ('seeds'). The max size
     This does some heuristic search to find papers that are the "closest"
     from the bibliography entries.
 
-    :param seeds: Ids of the papers to start the search with
-    :param biblio: Bib file
-    :param max_size: Maximum number of nodes
-    :param db: API to get references
-    :return:
     """
 
-    params = DEFAULT_PARAMS
-
-    # Complete the given seeds with seeds from the bibtex file
-    seeds = {*seeds, *seeds_in_bib(biblio)}
-
-    if len(seeds) == 0:
-        print("Cannot find seeds, mention some paper ids on the command line?")
-        return None
+    assert len(seeds) > 0
 
     request_failures = 0
-    FAILURE_LIMIT = 10
 
-    def exception_handler(request, exception):
+
+    def handle_api_failure(id: PaperId, p: Optional[Paper]):
         nonlocal request_failures
+        print("[ERROR] Scholar doesn't know paper with id %s (%s)" % (id, p and p.title or "unknown title"))
+        del nodes[id]
+        failed_ids.add(id)
         request_failures += 1
-        print("Request failed %s %s" % (str(request), str(exception)))  # todo
-        if request_failures > FAILURE_LIMIT:
-            print("API limit reached, aborting")
+        if request_failures > params.api_failure_limit:
+            print(f"[ERROR] Too many failures of semanticscholar API (> {params.api_failure_limit})")
+            print(f"        This may mean you hit the API's rate limit")
+            print(f"        Aborting.")
+            return True
+        return False
 
 
     def edge_disinterest(src: Paper, dst: Paper) -> float:
@@ -119,17 +134,17 @@ def smart_fetch(seeds: List[PaperId],
     neighbors = {}  # merged successors + predecessors
 
 
-    def update_multimap(map, k, v):
-        if k in map:
-            map[k].add(v)
+    def update_multimap(k, v):
+        if k in neighbors:
+            neighbors[k].add(v)
         else:
-            map[k] = {v}
+            neighbors[k] = {v}
 
 
     def add_ref(src, dst):
         """Record that paper src cites paper dst."""
-        update_multimap(neighbors, dst.id, src.id)
-        update_multimap(neighbors, src.id, dst.id)
+        update_multimap(dst.id, src.id)
+        update_multimap(src.id, dst.id)
 
     def api(p: Paper) -> float:
         """a-priori interest in the paper"""
@@ -156,7 +171,7 @@ def smart_fetch(seeds: List[PaperId],
 
     def degree_of_interest(p: Paper) -> float:
         return params.api_weight * api(p) \
-               + params.distance_penalty * distance_from_focal(p)
+               - params.distance_penalty * distance_from_focal(p)
 
 
     def update_graph(cur):
@@ -187,7 +202,7 @@ def smart_fetch(seeds: List[PaperId],
 
 
     # fetch the roots
-    roots = db.batch_fetch(seeds, exhandler=exception_handler)
+    roots = [resp for id in seeds for resp in [db.fetch_from_id(id)] if resp or not handle_api_failure(id, None)]
 
     # For node n, g_score[n] is the cost of the best path from start to n currently known.
     distance_to_root = {p.id: 0 for p in roots}
@@ -215,12 +230,7 @@ def smart_fetch(seeds: List[PaperId],
         result: Optional[PaperAndRefs] = db.fetch_from_id(best.id)
 
         if not result:
-            print("[ERROR] Scholar doesn't know paper with id %s" % best.id)
-            del nodes[best.id]
-            failed_ids.add(best.id)
-            request_failures += 1
-            if request_failures > FAILURE_LIMIT:
-                print("[ERROR] API limit reached, aborting")
+            if handle_api_failure(best.id, best):
                 break
             continue
 
@@ -231,120 +241,11 @@ def smart_fetch(seeds: List[PaperId],
             if pre_id in graph_nodes:
                 del graph_nodes[pre_id]
 
-        print(f'[{len(graph_nodes)} / {max_size} / {len(nodes)}] (DOI {cur_doi}) {best.title} ')
-        if len(graph_nodes) >= max_size:
+        print(f'[{len(graph_nodes)} / {params.max_graph_size} / {len(nodes)}] (DOI {cur_doi}) {best.title} ')
+        if len(graph_nodes) >= params.max_graph_size:
             print("Hit max size threshold")
             break
 
         update_graph(best)
 
     return Graph(graph_nodes)
-
-
-
-# TODO remove me
-def initialize_graph(seeds: List[PaperId],
-                     biblio: Biblio,
-                     max_size: int,
-                     db: PaperDb) -> Graph:
-    """
-    Builds the initial graph by fetching reference data from semapi.
-    This does some heuristic search to find papers that are the "closest"
-    from the bibliography entries.
-
-    TODO consider seeds
-
-    TODO expand on that by reweighting nodes according to eg in-degree
-        Eg the references of a widely cited paper are more important than one-off reference chains
-        References of the root should not be too overweighted
-
-    :param seeds: Ids of the papers to start the search with
-    :param biblio: Bib file
-    :param max_size: Maximum number of nodes
-    :param db: API to get references
-    :return:
-    """
-
-
-    def cost(paper: Paper):
-        return 8 if paper in biblio else 20
-
-
-    def edge_cost(src: Paper, dst: Paper) -> int:
-        base = 8
-        if src in biblio:
-            base = 6
-        elif dst in biblio:
-            base = 7
-        # the minimum edge weight must be positive
-        return base - min(authors_in_common(src, dst), 3)
-
-
-    open_set = PriorityQueue()
-
-    seeds = [*seeds, *seeds_in_bib(biblio)]
-
-    # For node n, g_score[n] is the cost of the best path from start to n currently known.
-    g_score = {id: 0 for id in seeds}
-
-    # For node n, f_score[n] := g_score[n] + h(n). f_score[n] represents our current best guess as to
-    # how short a path from start to finish can be if it goes through n.
-    f_score = {id: 8 for id in seeds}
-
-    nodes = {}
-
-
-    def push(id: PaperId):
-        f = f_score[id]
-        open_set.put((f, id))
-
-
-    def is_not_in_open_set(p: Paper):
-        for (_, c) in open_set.queue:
-            if c == p.id:
-                return False
-        return True
-
-
-    for e in seeds:
-        push(e)
-
-    failures = 0
-
-    while open_set.qsize() > 0:
-        (cur_f_score, paper_id) = open_set.get()
-
-        result: Optional[PaperAndRefs] = db.fetch_from_id(paper_id)
-
-        if not result:
-            print("Scholar doesn't know paper with id %s" % paper_id)
-            failures += 1
-            if failures > 10:
-                print("API limit reached, aborting")
-                break
-            continue
-
-        paper = result.paper
-        nodes[paper_id] = result
-
-        print(f'[{len(nodes)} / {max_size}] {paper.title} (score {cur_f_score})')
-
-        if len(nodes) >= max_size:
-            print("Hit max size threshold")
-            break
-
-        neighbor: Paper
-        for neighbor in result.references:
-            neighbor_id = neighbor.id
-
-            # tentative_gScore is the distance from start to the neighbor through current
-            tentative_g_score = g_score.get(paper_id, Infty) + edge_cost(paper, neighbor)
-            if tentative_g_score < g_score.get(neighbor_id, Infty):
-                # This path to neighbor is better than any previous one. Record it!
-                g_score[neighbor_id] = tentative_g_score
-                f_score[neighbor_id] = g_score.get(neighbor_id, Infty) + cost(neighbor)
-                if is_not_in_open_set(neighbor):
-                    push(neighbor_id)
-
-    return Graph(nodes)
-
