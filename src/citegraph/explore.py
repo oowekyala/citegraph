@@ -39,8 +39,8 @@ class Params(NamedTuple):
 
     """
 
-    distance_penalty: float = -1  # >= 0
-    degree_cut: int = 5  # > 0
+    distance_penalty: float = 0.5
+    degree_cut: int = 2  # > 0
     clustering_factor: float = 1  # > 0
     api_weight: float = 1  # > 0
 
@@ -77,7 +77,7 @@ def clusterness(neighbors_in_graph, neighbors):
     total_possible_triplets = num_neighbors * (num_neighbors - 1) / 2
 
     if total_possible_triplets == 0:
-        return 1
+        return 0.75
 
 
     def are_neighbors(src: PaperId, dst: PaperId):
@@ -99,10 +99,6 @@ def smart_fetch(seeds: Set[PaperId],
                 db: PaperDb) -> Optional[Graph]:
     """
     Builds the graph by fetching reference data from semapi.
-
-    This starts exploration from a set of roots ('seeds'). The max size
-    This does some heuristic search to find papers that are the "closest"
-    from the bibliography entries.
 
     """
 
@@ -179,7 +175,7 @@ def smart_fetch(seeds: Set[PaperId],
             nodes[citing.id] = citing
             add_ref(citing, cur)
 
-        # Reduce the distance of articles close to the root
+        # Reduce the distance of biblio articles (they're less penalized)
         if cur in biblio:
             distance_to_root[cur.id] = distance_to_root.get(cur.id, 0) / 2
 
@@ -215,6 +211,7 @@ def smart_fetch(seeds: Set[PaperId],
     failed_ids = set([])
 
     # todo dynamic programming
+    #  the DOI of a node doesn't change unless the node's neighbors have changed
     while True:
         (best, cur_doi) = max([(n, degree_of_interest(n))
                                for n in nodes.values()

@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 
 from citegraph.draw import DotGraphRenderer, GephiGraphRenderer, StylingInfo, SUPPORTED_FORMATS
-from citegraph.explore import Params,DEFAULT_PARAMS
+from citegraph.explore import Params
 from citegraph.explore import smart_fetch as create_graph
 from citegraph.model import Biblio
 from citegraph.semapi import PaperDb

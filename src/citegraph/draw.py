@@ -109,16 +109,15 @@ class StylingInfo(object):
 
 
 
-def make_label(entry: Paper):
-    fields = entry.fields
-    title = fields["title"]
-    title = "\n".join(textwrap.wrap(title, width=20))
+def make_label(paper: Paper):
 
-    first_author: Person = next(iter(entry.authors), None) or UNKNOWN_PERSON
+    first_author: Person = next(iter(paper.authors), UNKNOWN_PERSON)
 
     label = "<<B>%s" % html.escape(first_author.last_names[0])
-    if "year" in fields:
-        label += " (%s)" % fields["year"]
+    if paper.year:
+        label += " (%s)" % paper.year
+
+    title = "\n".join(textwrap.wrap(paper.title, width=20))
 
     label += "</B><BR/>" + html.escape(title).replace("\n", "<BR/>") + ">"
 
@@ -132,7 +131,7 @@ class DotGraphRenderer(GraphRenderer):
                  bibdata: Biblio,
                  styling: StylingInfo,
                  title="Citation graph"):
-        self.dot = g.Digraph(title)
+        self.dot = g.Digraph(title, graph_attr={"concentrate": "false"})
         self.bibdata = bibdata
         self.styling = styling
 
@@ -178,9 +177,10 @@ class DotGraphRenderer(GraphRenderer):
     def render(self, filename, render_format):
         if render_format == "dot":
             self.dot.save(filename=filename + ".dot")
-            print("DOT saved in " + filename)
+            print("DOT saved in " + filename + ".dot")
         else:
             print("Rendering...")
+            self.dot.engine = "circo"
             self.dot.render(filename=filename, format=render_format)
             print("Rendered to " + filename + "." + render_format)
 
