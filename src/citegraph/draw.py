@@ -2,6 +2,7 @@ import html
 import textwrap
 from abc import abstractmethod
 from typing import Dict
+from xml.sax.saxutils import escape as xml_escape
 
 import graphviz as g
 import yaml
@@ -57,6 +58,7 @@ class Graph(object):
 
 
 class StylingInfo(object):
+    """Parses the yaml --tags file, to add attributes to nodes."""
 
     def __init__(self, filename):
         self._by_id = {}
@@ -177,11 +179,8 @@ class DotGraphRenderer(GraphRenderer):
     def render(self, filename, render_format):
         if render_format == "dot":
             self.dot.save(filename=filename + ".dot")
-            print("DOT saved in " + filename + ".dot")
         else:
-            print("Rendering...")
-            self.dot.render(filename=filename, format=render_format)
-            print("Rendered to " + filename + "." + render_format)
+            self.dot.render(filename=filename, format=render_format, cleanup=True)
 
 
 
@@ -191,6 +190,8 @@ class GephiGraphRenderer(GraphRenderer):
         self.nodes = []
         self.edges = []
 
+    # TODO XML escaping
+
     @classmethod
     def supported_formats(cls):
         return ["gexf"]
@@ -198,7 +199,7 @@ class GephiGraphRenderer(GraphRenderer):
 
     def add_node(self, paper: Paper):
         self.nodes.append(
-            f"<node id='{paper.id}' label='{make_label(paper)}' />"
+            f"<node id='{paper.id}' label='{xml_escape(make_label(paper))}' />"
         )
 
 
@@ -211,9 +212,8 @@ class GephiGraphRenderer(GraphRenderer):
     def render(self, filename, render_format):
         assert render_format in ["gexf", "gephi"], f"Unsupported format {render_format}"
 
-        with open('w', filename + ".gexf") as f:
+        with open(filename + ".gexf", mode="w") as f:
             f.write("""
-
 <?xml version="1.0" encoding="UTF-8"?>
 <gexf xmlns="http://www.gexf.net/1.2draft" version="1.2">
     <graph mode="static" defaultedgetype="directed">
@@ -225,7 +225,8 @@ class GephiGraphRenderer(GraphRenderer):
         </edges>
     </graph>
 </gexf>
-""".format_map({
+""".strip()
+   .format_map({
                 "nodes": ("\n" + ' ' * 4 * 3).join(self.nodes),
                 "edges": ("\n" + ' ' * 4 * 3).join(self.edges)
             }))

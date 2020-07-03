@@ -123,7 +123,9 @@ def main(args, do_error):
             raise AssertionError(f"Wrong format {args.format}")
 
         graph.draw(renderer)
+        print("Rendering...")
         renderer.render(filename=args.outfile, render_format=f)
+        print("Rendered to " + args.outfile + "." + f)
 
 
 

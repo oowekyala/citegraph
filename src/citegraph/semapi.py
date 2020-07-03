@@ -10,8 +10,10 @@ API_URL = 'http://api.semanticscholar.org/v1'
 
 
 class PaperDb(object):
+
     # Cache requests made to semanticscholar, since they are idempotent
-    # This is super important!
+    # This is super important! But since the DB is also very badly
+    # structured it takes a lot of disk space
     requests_cache.install_cache(cache_name="semapi", backend='sqlite')
 
 

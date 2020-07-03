@@ -79,9 +79,8 @@ class Biblio(object):
     def __init__(self, bibdata: bibtex.BibliographyData):
         self.bibdata = bibdata
         self.by_norm_title: Dict[str, Paper] = {
-            paper.fields["title"].lower(): Paper(paper.fields, paper.persons["author"],
-                                                 # type_=paper,
-                                                 bibtex_id=paper.key)
+            paper.fields["title"].lower()
+            : Paper(paper.fields, paper.persons["author"], bibtex_id=paper.key)
             for paper in bibdata.entries.itervalues()
         }
         self.id_to_bibkey = {}
