@@ -9,16 +9,49 @@ class Params(NamedTuple):
     """
     Parameters of the graph exploration.
 
+    The degree of interest (DOI) of a paper is determined roughly
+    according to the following formula:
+
+      DOI(n) = api_weight * API(n) - distance_penalty * distance(n)
+
+    where API, the a-priori interest in a paper, is a function of the
+    edges that the paper would create in the graph if it is included.
+    The API is roughly computed like so:
+
+      API(n) = min(degree(n), degree_cut) * (1 + clustering_factor * clustering_coefficient(n))
+
+    The first factor is a measure of the raw number of edges that
+    the paper would add to the graph. In order not to favor very
+    influential papers over lesser known ones, and not to create
+    too many edges (which would make the graph unreadable), this
+    is cut above the degree_cut parameter.
+
+    The second term scales the first according to a measure of the
+    clustering between the node and its neighbors. It favors nodes
+    that are tightly clustered with their neighbors over nodes that
+    form unrelated connections with the whole graph.
+
+    In the DOI formula, the distance metric is a measure of the shortest
+    directed path between a paper and any root of the graph. Paths
+    that go through papers that were found in the bibliography are
+    artificially shortened, the point being to favor nodes that are
+    closer to the papers in the bibliography. Edges are weighted by
+    a "cost" metric, a lower cost being assigned to edges that connect
+    similar papers. The similarity metric used for this uses only
+    shared authors for now.
+
     Attributes:
     - api_weight
 
-        The weight given to the API (a-priori interest) when computing the DOI (degree of interest)
+        The weight given to the API  when computing the DOI (degree of interest)
 
-    - degree_cut
+    - degree_cut (> 0)
 
-        Degree above which all nodes are treated equally.
+        Degree above which all nodes are treated equally. This makes it so, that not only
+        very influential papers are included in the graph. A lower value favors papers that
+        don't have many citations.
 
-    - clustering_factor
+    - clustering_factor (>= 0)
 
         Importance given to the clustering coefficient of a node when computing its API.
 

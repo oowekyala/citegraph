@@ -46,7 +46,7 @@ def parse_args():
 
     """.rstrip())
 
-    parser.add_argument("-f", "--format", nargs="+", metavar="FORMAT", default=DEFAULT_FORMAT,
+    parser.add_argument("-f", "--format", nargs="+", metavar="FORMAT", default=[DEFAULT_FORMAT],
                         help=f"Render format(s), default is '{DEFAULT_FORMAT}'. "
                              f"Must be one of {SUPPORTED_FORMATS}.")
     parser.add_argument("-o", "--outfile", metavar="FILE", default="graph",
@@ -67,8 +67,9 @@ def parse_args():
 
     parsed = parser.parse_args()
 
-    if any(f not in SUPPORTED_FORMATS for f in parsed.format):
-        parser.error(f"Unrecognized format(s) {set(parsed.format) & set(SUPPORTED_FORMATS)}")
+    unknown_formats = set(parsed.format) - set(SUPPORTED_FORMATS)
+    if len(unknown_formats) != 0:
+        parser.error(f"Unrecognized format(s) {unknown_formats}")
 
     if len(parsed.format) == 0:
         parsed.format = [DEFAULT_FORMAT]
