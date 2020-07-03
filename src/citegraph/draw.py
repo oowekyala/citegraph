@@ -80,7 +80,7 @@ class StylingInfo(object):
                      )
 
         for tag, body in yaml_doc.get("tags", {}).items():
-            print(f"processing {tag}")
+            print(f"Processing tag {tag}")
             attrs = body.get("attrs", {})
 
             for id in body.get("members", []):
@@ -180,7 +180,6 @@ class DotGraphRenderer(GraphRenderer):
             print("DOT saved in " + filename + ".dot")
         else:
             print("Rendering...")
-            self.dot.engine = "circo"
             self.dot.render(filename=filename, format=render_format)
             print("Rendered to " + filename + "." + render_format)
 

@@ -96,7 +96,7 @@ def clusterness(neighbors_in_graph, neighbors):
 def smart_fetch(seeds: Set[PaperId],
                 biblio: Biblio,
                 params: Params,
-                db: PaperDb) -> Optional[Graph]:
+                db: PaperDb) -> Graph:
     """
     Builds the graph by fetching reference data from semapi.
 

@@ -46,22 +46,35 @@ def parse_args():
 
     """.rstrip())
 
-    parser.add_argument("-f", "--format", help="Render format, one of %s" % SUPPORTED_FORMATS, metavar="FORMAT", default=DEFAULT_FORMAT)
-    parser.add_argument("-o", "--outfile", help="Path to the rendered file, without extension (default 'graph')", metavar="FILE")
+    parser.add_argument("-f", "--format", nargs="+", metavar="FORMAT", default=DEFAULT_FORMAT,
+                        help=f"Render format(s), default is '{DEFAULT_FORMAT}'. "
+                             f"Must be one of {SUPPORTED_FORMATS}.")
+    parser.add_argument("-o", "--outfile", metavar="FILE", default="graph",
+                        help="Path to the rendered file, without extension."
+                             " The extension is determined based on the render format.")
     parser.add_argument("--size", type=int, help="Size of the graph to generate", metavar="INT", default=80)
-    parser.add_argument("--tags", help="Path to a yaml file containing styling info", metavar="FILE")
-    parser.add_argument("-b", "--bib", dest="bibfile", metavar="file.bib", help="Bibtex file, whose contents help guide the graph exploration")
-    parser.add_argument("graph_roots", metavar="ID", nargs="*", help="Paper IDs for the starting points of the graph exploration")
+    parser.add_argument("--tags", metavar="FILE",
+                        help="Path to a yaml file containing styling info. "
+                             "See the README for a description of the expected format")
+    parser.add_argument("-b", "--bib", dest="bibfile", metavar="FILE.bib",
+                        help="Bibtex file, whose contents help guide the graph exploration. "
+                             "Entries may contain paper IDs, which are automatically added "
+                             "to the roots of the exploration. "
+                             "The exploration tries to cover as much of those papers as possible, "
+                             "but they much be reachable from the provided roots.")
+    parser.add_argument("graph_roots", metavar="ID", nargs="*",
+                        help="Paper IDs for the starting points of the graph exploration")
 
     parsed = parser.parse_args()
 
-    parsed.outfile = parsed.outfile or "graph"
+    if any(f not in SUPPORTED_FORMATS for f in parsed.format):
+        parser.error(f"Unrecognized format(s) {set(parsed.format) & set(SUPPORTED_FORMATS)}")
 
-    if parsed.format not in SUPPORTED_FORMATS:
-        parser.error(f"Unrecognized format {parsed.format}")
+    if len(parsed.format) == 0:
+        parsed.format = [DEFAULT_FORMAT]
 
     if len(parsed.graph_roots) == 0 and not parsed.bibfile:
-        parser.error("You must specify the ID of a paper, or a bibtex file that contains such ids")
+        parser.error("You must specify the ID of a paper, or a bibtex file that contains such IDs")
 
     if parsed.bibfile and not Path(parsed.bibfile).is_file():
         parser.error(f"Bibtex file does not exist: {parsed.bibfile}")
@@ -98,16 +111,19 @@ def main(args, do_error):
 
     graph = create_graph(seeds=seeds, biblio=bibdata, params=params, db=db)
 
-    if graph:
-        if args.format in DotGraphRenderer.supported_formats():
-            dot_builder = DotGraphRenderer(bibdata=bibdata, styling=StylingInfo(args.tags))
-        elif args.format in GephiGraphRenderer.supported_formats():
-            dot_builder = GephiGraphRenderer()
+    renderer = None
+    for f in args.format:
+        if f in DotGraphRenderer.supported_formats():
+            if not isinstance(renderer, DotGraphRenderer):
+                renderer = DotGraphRenderer(bibdata=bibdata, styling=StylingInfo(args.tags))
+        elif f in GephiGraphRenderer.supported_formats():
+            if not isinstance(renderer, GephiGraphRenderer):
+                renderer = GephiGraphRenderer()
         else:
             raise AssertionError(f"Wrong format {args.format}")
 
-        graph.draw(dot_builder)
-        dot_builder.render(filename=args.outfile, render_format=args.format)
+        graph.draw(renderer)
+        renderer.render(filename=args.outfile, render_format=f)
 
 
 
