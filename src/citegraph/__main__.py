@@ -100,7 +100,6 @@ def seeds_in_bib(biblio: Biblio):
 
 def main(args, do_error):
     bibdata = Biblio.from_file(args.bibfile) if args.bibfile else Biblio.empty()
-    db = PaperDb(bibdata=bibdata)
 
     # Complete the given seeds with seeds from the bibtex file
     seeds = {*args.graph_roots, *seeds_in_bib(bibdata)}
@@ -110,7 +109,8 @@ def main(args, do_error):
 
     params = Params(max_graph_size=args.size)
 
-    graph = create_graph(seeds=seeds, biblio=bibdata, params=params, db=db)
+    with PaperDb(bibdata=bibdata, dbfile="semapi2.sqlite") as db:
+        graph = create_graph(seeds=seeds, biblio=bibdata, params=params, db=db)
 
     renderer = None
     for f in args.format:

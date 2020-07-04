@@ -13,13 +13,16 @@ PaperId = NewType("PaperId", str)
 
 class Paper(object):
 
-    def __init__(self, fields, authors,
+    def __init__(self,
+                 fields: Dict,
+                 authors: List[Person],
+                 id: PaperId,
                  type_="article",
                  bibtex_id=None):
         self.fields = fields
         self.authors = authors
         self.type_ = type_
-        self.id = fields.get(SEMAPI_ID_FIELD, None) or bibtex_id
+        self.id = id or bibtex_id
         self.bibtex_id = bibtex_id
 
 
@@ -45,7 +48,9 @@ class Paper(object):
 class PaperAndRefs(Paper):
 
     def __init__(self, references, citations, paper):
-        super().__init__(fields=paper.fields, authors=paper.authors, type_=paper.type_, bibtex_id=paper.bibtex_id)
+        super().__init__(fields=paper.fields, authors=paper.authors,
+                         id=paper.id, type_=paper.type_,
+                         bibtex_id=paper.bibtex_id)
         self.references: List[Paper] = references
         self.citations: List[Paper] = citations
 
@@ -80,7 +85,10 @@ class Biblio(object):
         self.bibdata = bibdata
         self.by_norm_title: Dict[str, Paper] = {
             paper.fields["title"].lower()
-            : Paper(paper.fields, paper.persons["author"], bibtex_id=paper.key)
+            : Paper(paper.fields,
+                    paper.persons["author"],
+                    id=paper.key,
+                    bibtex_id=paper.key)
             for paper in bibdata.entries.itervalues()
         }
         self.id_to_bibkey = {}
@@ -90,43 +98,18 @@ class Biblio(object):
         """
         Returns whether this bib file contains the given entry.
         """
-        return paper.id and paper.id in self.id_to_bibkey \
-               or paper.bibtex_id and paper.bibtex_id in self.bibdata.entries
+        return paper.id and paper.id in self.id_to_bibkey
 
     def __iter__(self):
         return iter(self.by_norm_title.values())
 
 
-    def make_entry(self, paper_dict) -> Paper:
-        """
-        Retrieve the bib entry corresponding to the given semanticscholar paper result.
-        If the paper is present in the bib file, then that entry is returned.
-        Otherwise a new entry is created.
-
-        :param paper_dict: Semapi result
-        :return: An entry
-        """
-        paper_id = paper_dict["paperId"]
-
-        bibtex_entry = self.by_norm_title.get(paper_dict["title"].lower(), None)
-
-        if bibtex_entry:  # paper is in bibtex file, prefer data from that file
-            # save mapping from ID to bibtex key
-            bibtex_entry.id = paper_id
-            self.id_to_bibkey[paper_id] = bibtex_entry.bibtex_id
-            # print("  Found key %s in bib file" % bibtex_entry.key)
-            bibtex_entry.fields[ABSTRACT_FIELD] = paper_dict.get("abstract", "")
-            return bibtex_entry
-        else:
-            fields = {
-                "title": paper_dict["title"],
-                "year": paper_dict["year"],
-                SEMAPI_ID_FIELD: paper_id,
-                ABSTRACT_FIELD: paper_dict.get("abstract", ""),
-            }
-
-            authors = [bibtex.Person(author["name"]) for author in paper_dict["authors"]]
-            return Paper(type_="article", authors=authors, fields=fields)
+    def enrich(self, paper):
+        bibtex_entry = self.by_norm_title.get(paper.title.lower(), None)
+        if bibtex_entry:
+            paper.bibtex_id = bibtex_entry.bibtex_id
+            self.id_to_bibkey[paper.id] = bibtex_entry.bibtex_id
+        return paper
 
 
     @staticmethod
@@ -137,4 +120,3 @@ class Biblio(object):
     @staticmethod
     def empty() -> 'Biblio':
         return Biblio(bibtex.BibliographyData())
-
