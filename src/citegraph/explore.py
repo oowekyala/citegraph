@@ -138,7 +138,7 @@ def smart_fetch(seeds: Set[PaperId],
     assert len(seeds) > 0
 
     request_failures = 0
-
+    failed_ids = set([])
 
     def handle_api_failure(id: PaperId, p: Optional[Paper]):
         nonlocal request_failures
@@ -230,18 +230,17 @@ def smart_fetch(seeds: Set[PaperId],
                 distance_to_root[cited.id] = tentative_dist
 
 
+    nodes = {}
     # fetch the roots
     roots = [resp for id in seeds for resp in [db.fetch_from_id(id)] if resp or not handle_api_failure(id, None)]
 
     # For node n, g_score[n] is the cost of the best path from start to n currently known.
     distance_to_root = {p.id: 0 for p in roots}
-    nodes = {p.id: p for p in roots}
+    nodes = {**nodes, **{p.id: p for p in roots}}
     graph_nodes = {}
 
     for r in roots:
         update_graph(r)
-
-    failed_ids = set([])
 
     # todo dynamic programming
     #  the DOI of a node doesn't change unless the node's neighbors have changed
