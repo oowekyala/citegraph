@@ -1,5 +1,5 @@
 import sqlite3
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Iterable
 
 import semanticscholar
 
@@ -7,25 +7,36 @@ from citegraph.model import Biblio, PaperAndRefs, PaperId, Person,Paper
 
 API_URL = 'http://api.semanticscholar.org/v1'
 
-class PaperDb(object):
-    """
-    Database where paper information is stored.
 
+def _tupled_sort(iterable: Iterable) -> Iterable:
+    """
+    Sort an iterable of tuples using the last component as a key,
+    returns an iterable of tuples that doesn't include the key.
+    """
+    lst = sorted(iterable, key=lambda tup: tup[-1])
+    it = iter(lst)
+    while True:
+        elt = next(it)
+        yield elt[:-1]
+
+class PaperDb(object):
+
+    """
     Tables:
 
-    PAPER
+    Papers
     (id: primary str) * (title: str) * (year: int)
 
-    CITATION
+    Citations
     (src: paperId) * (dst: paperId)
 
-    AUTHOR
+    Authors
     (id: primary str) * (name: str)
 
-    AUTHORSHIP
+    AuthorLinks
     (paperId) * (authorId) * (rank: int)
 
-    RESOLVED
+    Resolved
     (id: paperId) * (resolved: bool)
 
 
@@ -41,10 +52,9 @@ class PaperDb(object):
         self.dbconn = None
         self.memcache = {}
 
-
     def __paper_from_db(self, paper_id: PaperId, with_refs: bool):
         c = self.dbconn.cursor()
-        c.execute("SELECT title, year FROM Paper WHERE Paper.id=?", (paper_id,))
+        c.execute("SELECT title, year FROM Papers WHERE id=?", (paper_id,))
         found = c.fetchone()
         if not found or with_refs and not self.__is_resolved(paper_id):
             return None
@@ -59,9 +69,9 @@ class PaperDb(object):
             return paper
 
         citations = [self.__paper_from_db(id[0], False)
-                     for id in c.execute("SELECT src FROM Citation WHERE dst=?", (paper_id,))]
+                     for id in c.execute(f"SELECT src FROM Citations WHERE dst=?", (paper_id,))]
         references = [self.__paper_from_db(id[0], False)
-                      for id in c.execute("SELECT dst FROM Citation WHERE src=?", (paper_id,))]
+                      for id in c.execute(f"SELECT dst FROM Citations WHERE src=?", (paper_id,))]
 
         c.close()
 
@@ -78,9 +88,7 @@ class PaperDb(object):
 
 
     def __authors_from_db(self, paper_id: PaperId) -> List[Person]:
-        lst = [tup for tup in self.dbconn.execute("SELECT Author.name, Authorship.rank FROM Author INNER JOIN Authorship ON Authorship.authorId = Author.id WHERE Authorship.paperId=?", (paper_id,))]
-        lst.sort(key=lambda tup: tup[1])
-        return [Person(tup[0]) for tup in lst]
+        return [Person(tup[0]) for tup in _tupled_sort(self.dbconn.execute("SELECT Authors.name, AuthorLinks.rank FROM Authors INNER JOIN AuthorLinks ON AuthorLinks.authorId = Authors.id WHERE AuthorLinks.paperId=?", (paper_id,)))]
 
     def __update_db(self, response) -> PaperAndRefs:
 
@@ -114,10 +122,10 @@ class PaperDb(object):
             author_update(ref, ref_id)
             paper_update(ref)
 
-        self.cursor.executemany("REPLACE INTO Paper VALUES (?,?,?)", papers)
-        self.cursor.executemany("REPLACE INTO Citation VALUES (?,?)", cites)
-        self.cursor.executemany("REPLACE INTO Author VALUES (?,?)", authors.items())
-        self.cursor.executemany("REPLACE INTO Authorship VALUES (?,?,?)", authorship)
+        self.cursor.executemany("REPLACE INTO Papers VALUES (?,?,?)", papers)
+        self.cursor.executemany("REPLACE INTO Citations VALUES (?,?)", cites)
+        self.cursor.executemany("REPLACE INTO Authors VALUES (?,?)", authors.items())
+        self.cursor.executemany("REPLACE INTO AuthorLinks VALUES (?,?,?)", authorship)
         # mark this paper as resolved
         self.cursor.execute("REPLACE INTO Resolved VALUES (?, 1)", (paper_id,))
 
@@ -158,15 +166,22 @@ class PaperDb(object):
         self.dbconn = sqlite3.connect(self.dbfile)
         self.cursor = self.dbconn.cursor()
 
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS Paper (id VARCHAR PRIMARY KEY, title VARCHAR, year INT);")
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS Resolved (id VARCHAR PRIMARY KEY, resolved BOOL);")
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS Papers (id VARCHAR PRIMARY KEY, title VARCHAR, year INTEGER);")
         self.cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Citation (src VARCHAR, dst VARCHAR, 
+        CREATE TABLE IF NOT EXISTS Resolved (id VARCHAR PRIMARY KEY, resolved BOOL,
+                                   FOREIGN KEY (id) REFERENCES Papers(id));
+        """)
+        self.cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS Citations (src VARCHAR, dst VARCHAR, 
+                                   FOREIGN KEY (src) REFERENCES Papers(id),
+                                   FOREIGN KEY (dst) REFERENCES Papers(id),
                                    CONSTRAINT unique_edge UNIQUE (src, dst));
         """)
-        self.cursor.execute(" CREATE TABLE IF NOT EXISTS Author (id VARCHAR PRIMARY KEY, name VARCHAR);")
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS Authors (id INTEGER PRIMARY KEY, name VARCHAR);")
         self.cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Authorship (paperId VARCHAR, authorId VARCHAR, rank INT,
+        CREATE TABLE IF NOT EXISTS AuthorLinks (paperId VARCHAR, authorId INTEGER, rank INTEGER,
+                                   FOREIGN KEY (paperId) REFERENCES Papers(id),
+                                   FOREIGN KEY (authorId) REFERENCES Authors(id),
                                    CONSTRAINT unique_auth UNIQUE (paperId, authorId));
         """)
 
