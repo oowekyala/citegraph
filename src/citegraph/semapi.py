@@ -2,6 +2,7 @@ import sqlite3
 from typing import Dict, Optional, List, Iterable
 
 import semanticscholar
+import requests.exceptions
 
 from citegraph.model import Biblio, PaperAndRefs, PaperId, Person,Paper
 
@@ -20,8 +21,10 @@ def _tupled_sort(iterable: Iterable) -> Iterable:
         yield elt[:-1]
 
 class PaperDb(object):
-
     """
+    Interface to semanticscholar.org. Requests are persisted, because
+    the API rate limit is very low.
+
     Tables:
 
     Papers
@@ -147,11 +150,14 @@ class PaperDb(object):
         if found:
             return found
 
-        # print(f"Requesting {paper_id}...", end="")
-        paper_dict: Dict = semanticscholar.paper(paper_id)
-        # print(f" done.")
+        try:
+            paper_dict: Dict = semanticscholar.paper(paper_id)
+            error = len(paper_dict.keys()) == 0
+        except requests.exceptions.RequestException as e:
+            print(f"[ERROR] {str(e)}")
+            error = True
 
-        if len(paper_dict.keys()) == 0:
+        if error:
             result = None
         else:
             result = self.__update_db(response=paper_dict)
@@ -175,7 +181,7 @@ class PaperDb(object):
         CREATE TABLE IF NOT EXISTS Citations (src VARCHAR, dst VARCHAR, 
                                    FOREIGN KEY (src) REFERENCES Papers(id),
                                    FOREIGN KEY (dst) REFERENCES Papers(id),
-                                   CONSTRAINT unique_edge UNIQUE (src, dst));
+                                   PRIMARY KEY (src, dst));
         """)
         self.cursor.execute("CREATE TABLE IF NOT EXISTS Authors (id INTEGER PRIMARY KEY, name VARCHAR);")
         self.cursor.execute("""
