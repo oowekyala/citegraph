@@ -98,7 +98,8 @@ class Biblio(object):
         """
         Returns whether this bib file contains the given entry.
         """
-        return paper.id and paper.id in self.id_to_bibkey
+        return paper.id and paper.id in self.id_to_bibkey \
+               or paper.bibtex_id and paper.bibtex_id in self.bibdata.entries
 
     def __iter__(self):
         return iter(self.by_norm_title.values())

@@ -66,7 +66,7 @@ class PaperDb(object):
                       authors=self.__authors_from_db(paper_id))
 
         if not with_refs:
-            return paper
+            return self.bibdata.enrich(paper)
 
         citations = [self.__paper_from_db(id[0], False)
                      for id in c.execute(f"SELECT src FROM Citations WHERE dst=?", (paper_id,))]
@@ -75,11 +75,11 @@ class PaperDb(object):
 
         c.close()
 
-        return PaperAndRefs(
+        return self.bibdata.enrich(PaperAndRefs(
             paper=paper,
             citations=citations,
             references=references
-        )
+        ))
 
 
     def __is_resolved(self, paper_id: PaperId) -> bool:
@@ -145,7 +145,7 @@ class PaperDb(object):
 
         found = self.__paper_from_db(paper_id, True)
         if found:
-            return self.bibdata.enrich(found)
+            return found
 
         # print(f"Requesting {paper_id}...", end="")
         paper_dict: Dict = semanticscholar.paper(paper_id)
@@ -156,7 +156,7 @@ class PaperDb(object):
         else:
             result = self.__update_db(response=paper_dict)
             result.id = paper_dict["paperId"]
-            result = self.bibdata.enrich(result)
+            result = result
 
         self.memcache[paper_id] = result
         return result

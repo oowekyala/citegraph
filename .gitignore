@@ -237,3 +237,4 @@ src/semapi.sqlite
 .idea/
 citegraph.iml
 *.sqlite
+sandbox
