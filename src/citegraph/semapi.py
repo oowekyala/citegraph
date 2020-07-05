@@ -100,6 +100,8 @@ class PaperDb(object):
         cites = []
         papers = []
 
+        # todo handle missing authorId
+
         def paper_update(dic):
             papers.append((dic["paperId"], dic["title"] or "", int(dic["year"] or 0)))
 
@@ -113,20 +115,22 @@ class PaperDb(object):
         paper_update(response)
         author_update(response, paper_id)
 
-        for ref in response["references"]:
-            ref_id = ref["paperId"]
-            cites.append((paper_id, ref_id))
-            author_update(ref, ref_id)
-            paper_update(ref)
+        def cite_update(dict, is_references):
+            for ref in dict:
+                ref_id = ref["paperId"]
+                is_influential = ref["isInfluential"]
+                if is_references:
+                    cites.append((paper_id, ref_id, is_influential))
+                else:
+                    cites.append((ref_id, paper_id, is_influential))
+                author_update(ref, ref_id)
+                paper_update(ref)
 
-        for ref in response["citations"]:
-            ref_id = ref["paperId"]
-            cites.append((ref_id, paper_id))
-            author_update(ref, ref_id)
-            paper_update(ref)
+        cite_update(response["references"], True)
+        cite_update(response["citations"], False)
 
         self.cursor.executemany("REPLACE INTO Papers VALUES (?,?,?)", papers)
-        self.cursor.executemany("REPLACE INTO Citations VALUES (?,?)", cites)
+        self.cursor.executemany("REPLACE INTO Citations VALUES (?,?,?)", cites)
         self.cursor.executemany("REPLACE INTO Authors VALUES (?,?)", authors.items())
         self.cursor.executemany("REPLACE INTO AuthorLinks VALUES (?,?,?)", authorship)
         # mark this paper as resolved
@@ -178,7 +182,7 @@ class PaperDb(object):
                                    FOREIGN KEY (id) REFERENCES Papers(id));
         """)
         self.cursor.execute(f"""
-        CREATE TABLE IF NOT EXISTS Citations (src VARCHAR, dst VARCHAR, 
+        CREATE TABLE IF NOT EXISTS Citations (src VARCHAR NOT NULL, dst VARCHAR NOT NULL, influential BOOL NOT NULL,
                                    FOREIGN KEY (src) REFERENCES Papers(id),
                                    FOREIGN KEY (dst) REFERENCES Papers(id),
                                    PRIMARY KEY (src, dst));

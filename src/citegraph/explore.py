@@ -256,7 +256,7 @@ def smart_fetch(seeds: Set[PaperId],
             break  # no more nodes
 
         pre_id = best.id
-        result: Optional[PaperAndRefs] = db.fetch_from_id(best.id)
+        result: Optional[PaperAndRefs] = db.fetch_from_id(best.id) if not isinstance(PaperAndRefs, best) else best
 
         if not result:
             if handle_api_failure(best.id, best):
