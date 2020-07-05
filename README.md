@@ -40,11 +40,28 @@ Rendering...
 Rendered to graph.pdf
 ```
 
-Here's what the graph would look like (this uses a max `--size` of 20):
+Here's what the graph would look like (using a max `--size` of 20 for readability):
 
 ![Graph example](examples/graph.svg)
 
 Use `citegraph --help` to find out about all the options.
+
+### Exploration parameters
+
+By default the exploration algorithm is biased towards exploring
+downward links. To also explore the papers that cite your root
+papers, you can use the option `--also-up`.
+
+Compare for example the two following graphs (root paper in pink):
+
+* Default:
+
+![Laarman default](examples/laarman_only_down.svg)
+
+* With `--also-up`:
+
+![Laarman up and down](examples/laarman_up_and_down.svg)
+
 
 ### Layout and export formats
 
