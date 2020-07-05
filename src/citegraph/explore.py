@@ -137,13 +137,16 @@ def smart_fetch(seeds: Set[PaperId],
 
     assert len(seeds) > 0
 
+    nodes = {}
+
     request_failures = 0
     failed_ids = set([])
 
     def handle_api_failure(id: PaperId, p: Optional[Paper]):
         nonlocal request_failures
         print("[ERROR] Scholar doesn't know paper with id %s (%s)" % (id, p and p.title or "unknown title"))
-        del nodes[id]
+        if id in nodes:  # may not be here if the ID is a root
+            del nodes[id]
         failed_ids.add(id)
         request_failures += 1
         if request_failures > params.api_failure_limit:
@@ -229,8 +232,6 @@ def smart_fetch(seeds: Set[PaperId],
             if tentative_dist < cur_dist:
                 distance_to_root[cited.id] = tentative_dist
 
-
-    nodes = {}
     # fetch the roots
     roots = [resp for id in seeds for resp in [db.fetch_from_id(id)] if resp or not handle_api_failure(id, None)]
 
@@ -256,7 +257,7 @@ def smart_fetch(seeds: Set[PaperId],
             break  # no more nodes
 
         pre_id = best.id
-        result: Optional[PaperAndRefs] = db.fetch_from_id(best.id) if not isinstance(PaperAndRefs, best) else best
+        result: Optional[PaperAndRefs] = db.fetch_from_id(best.id) if not isinstance(best, PaperAndRefs) else best
 
         if not result:
             if handle_api_failure(best.id, best):

@@ -1,6 +1,8 @@
 import argparse
 from pathlib import Path
 
+import os
+
 from citegraph.draw import DotGraphRenderer, GephiGraphRenderer, StylingInfo, SUPPORTED_FORMATS
 from citegraph.explore import Params
 from citegraph.explore import smart_fetch as create_graph
@@ -8,7 +10,7 @@ from citegraph.model import Biblio
 from citegraph.semapi import PaperDb
 
 DEFAULT_FORMAT = "pdf"
-
+DB_LOC_VAR = "CITEGRAPH_DB"
 
 
 def parse_args():
@@ -62,6 +64,8 @@ def parse_args():
                              "to the roots of the exploration. "
                              "The exploration tries to cover as much of those papers as possible, "
                              "but they much be reachable from the provided roots.")
+    parser.add_argument("--db-location", metavar="FILE",
+                        help=f"Location of the database file (defaults to environment variable {DB_LOC_VAR})")
     parser.add_argument("graph_roots", metavar="ID", nargs="*",
                         help="Paper IDs for the starting points of the graph exploration")
 
@@ -107,9 +111,10 @@ def main(args, do_error):
     if len(seeds) == 0:
         do_error("No graph roots could be found, mention some on the command-line")
 
-    params = Params(max_graph_size=args.size)
+    db_loc = args.db_location or os.getenv(DB_LOC_VAR) or ".citegraph.sqlite"
 
-    with PaperDb(bibdata=bibdata, dbfile="semapi2.sqlite") as db:
+    with PaperDb(bibdata=bibdata, dbfile=db_loc) as db:
+        params = Params(max_graph_size=args.size)
         graph = create_graph(seeds=seeds, biblio=bibdata, params=params, db=db)
 
     renderer = None
