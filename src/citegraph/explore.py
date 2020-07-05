@@ -72,21 +72,18 @@ class Params(NamedTuple):
 
     """
 
-    distance_penalty: float = 0.5
-    degree_cut: int = 2  # > 0
-    clustering_factor: float = 1  # > 0
+    distance_penalty: float = 0.2
+    degree_cut: int = 3  # > 0
+    clustering_factor: float = 0.5  # > 0
     api_weight: float = 1  # > 0
 
     api_failure_limit: int = 10
     max_graph_size: int = 80
+    consider_upward_links: bool = False
 
 
 
 Infty = 2 ** 1000
-
-
-def age(p: Paper):
-    return 2020 - int(p.year or 2000)
 
 
 def authors_in_common(p1: Paper, p2: Paper) -> int:
@@ -138,9 +135,12 @@ def smart_fetch(seeds: Set[PaperId],
     assert len(seeds) > 0
 
     nodes = {}
+    neighbors = {}  # merged successors + predecessors
+    influential_edges = set([])
 
     request_failures = 0
     failed_ids = set([])
+
 
     def handle_api_failure(id: PaperId, p: Optional[Paper]):
         nonlocal request_failures
@@ -163,81 +163,99 @@ def smart_fetch(seeds: Set[PaperId],
         return 1 + max_disinterest * (1 - authors_similarity(src, dst))
 
 
-    neighbors = {}  # merged successors + predecessors
-
-
     def update_multimap(k, v):
         if k in neighbors:
-            neighbors[k].add(v)
+            neighbors_of_k = neighbors[k]
+            if v not in neighbors_of_k:
+                neighbors_of_k.add(v)
+                return True
+            else:
+                return False
         else:
             neighbors[k] = {v}
+            return True
 
 
-    def add_ref(src, dst):
+    def add_ref(src, dst, is_influential):
         """Record that paper src cites paper dst."""
-        update_multimap(dst.id, src.id)
-        update_multimap(src.id, dst.id)
+        if update_multimap(dst.id, src.id):
+            if is_influential:
+                influential_edges.add((src.id, dst.id))
+            return update_multimap(src.id, dst.id)
+        return False
 
-    def api(p: Paper) -> float:
+
+    def a_priori_interest(p: Paper) -> float:
         """a-priori interest in the paper"""
-        if p.id == 'bdc3d618db015b2f17cd76224a942bfdfc36dc73':
-            # https://www.semanticscholar.org/paper/Intravenous-Oxycodone-Versus-Other-Intravenous-for-Raff-Belbachir/bdc3d618db015b2f17cd76224a942bfdfc36dc73
-            # Buggy article (224K citations)
-            return -1000
-
         my_neighbors = neighbors.get(p.id, set())
         neighbors_in_graph = graph_nodes.keys() & my_neighbors
         num_new_edges = len(neighbors_in_graph)
 
-        # my_age = age(p)
-        # avg_age_diff = sum([abs(my_age - age(graph_nodes[id])) for id in neighbors_in_graph]) / (1 + num_new_edges)
-
         clustering = params.clustering_factor * clusterness(neighbors_in_graph, neighbors)
         base = min(num_new_edges, params.degree_cut) * (1 + clustering)
 
+        influence_bonus = sum((+2 if (src in neighbors_in_graph and dst == p.id)
+                                   else +1 if (dst in neighbors_in_graph and src == p.id) else 0)
+                               for (src, dst) in influential_edges
+                               ) / (num_new_edges + 1)
+        # if influence_bonus != 0:
+        #     print(f"{influence_bonus} / {(num_new_edges + 1)} = {influence_bonus / (num_new_edges + 1)}")
+
+        base = base + influence_bonus
+
         return base * 3 if p in biblio else base
+
 
     def distance_from_focal(p: Paper):
         return distance_to_root.get(p.id, 10)
 
 
     def degree_of_interest(p: Paper) -> float:
-        return params.api_weight * api(p) \
+        return params.api_weight * a_priori_interest(p) \
                - params.distance_penalty * distance_from_focal(p)
 
 
+    def update_distances(cur, neighbor):
+        # Try to see if passing through the new neighbor is a better path from the root to 'cur'
+        best_dist = distance_to_root.get(cur.id, Infty)
+        tentative_dist = distance_to_root.get(neighbor.id, Infty) + edge_disinterest(neighbor, cur)
+        if tentative_dist < best_dist:
+            distance_to_root[cur.id] = tentative_dist
+            best_dist = tentative_dist
+
+        # Similarly, try to see if passing through 'cur' is a better path from the root to the neighbor
+        tentative_dist = best_dist + edge_disinterest(cur, neighbor)
+        cur_dist = distance_to_root.get(neighbor.id, Infty)
+        if tentative_dist < cur_dist:
+            distance_to_root[neighbor.id] = tentative_dist
+
+
     def update_graph(cur):
-        for citing in cur.citations:
+
+        for (citing, is_influential) in sorted(cur.citations, key=lambda c: c.paper.id):
             nodes[citing.id] = citing
-            add_ref(citing, cur)
+            if add_ref(citing, cur, is_influential) and params.consider_upward_links:
+                # only if we really added the ref
+                update_distances(citing, cur)
 
-        # Reduce the distance of biblio articles (they're less penalized)
-        if cur in biblio:
-            distance_to_root[cur.id] = distance_to_root.get(cur.id, 0) / 2
-
-        for cited in cur.references:
+        for (cited, is_influential) in sorted(cur.references, key=lambda c: c.paper.id):
             nodes[cited.id] = cited
-            add_ref(cur, cited)
+            if add_ref(cited, cur, is_influential):
+                # only if we really added the ref
+                update_distances(cur, cited)
 
-            # Try to see if passing through the new neighbor is a better path from the root to 'best'
-            best_dist = distance_to_root.get(cur.id, Infty)
-            tentative_dist = distance_to_root.get(cited.id, Infty) + edge_disinterest(cited, cur)
-            if tentative_dist < best_dist:
-                distance_to_root[cur.id] = tentative_dist
-                best_dist = tentative_dist
-
-            # Similarly, try to see if passing through 'best' is a better path from the root to the neighbor
-            tentative_dist = best_dist + edge_disinterest(cur, cited)
-            cur_dist = distance_to_root.get(cited.id, Infty)
-            if tentative_dist < cur_dist:
-                distance_to_root[cited.id] = tentative_dist
 
     # fetch the roots
     roots = [resp for id in seeds for resp in [db.fetch_from_id(id)] if resp or not handle_api_failure(id, None)]
+    roots = [r for r in roots if r]
+    if len(roots) == 0:
+        print("[ERROR] No roots could be fetched")
+        return Graph({})
 
     # For node n, g_score[n] is the cost of the best path from start to n currently known.
     distance_to_root = {p.id: 0 for p in roots}
     nodes = {**nodes, **{p.id: p for p in roots}}
+    # Nodes that are in the graph
     graph_nodes = {}
 
     for r in roots:

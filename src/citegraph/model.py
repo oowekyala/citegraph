@@ -1,4 +1,4 @@
-from typing import NewType, List, Dict
+from typing import NewType, List, Dict, NamedTuple
 
 import pybtex.database as bibtex
 from pybtex.database.input.bibtex import Parser as BibParser
@@ -44,6 +44,10 @@ class Paper(object):
         return f"{self.year} {self.title}"
 
 
+class Citation(NamedTuple):
+    paper: Paper
+    is_influential: bool
+
 
 class PaperAndRefs(Paper):
 
@@ -51,8 +55,8 @@ class PaperAndRefs(Paper):
         super().__init__(fields=paper.fields, authors=paper.authors,
                          id=paper.id, type_=paper.type_,
                          bibtex_id=paper.bibtex_id)
-        self.references: List[Paper] = references
-        self.citations: List[Paper] = citations
+        self.references: List[Citation] = references
+        self.citations: List[Citation] = citations
 
 
     @property

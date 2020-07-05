@@ -69,6 +69,8 @@ def parse_args():
     parser.add_argument("graph_roots", metavar="ID", nargs="*",
                         help="Paper IDs for the starting points of the graph exploration")
 
+    parser.add_argument("--also-up", help="Specifies that backwards links will also be explored", action="store_true")
+
     parsed = parser.parse_args()
 
     unknown_formats = set(parsed.format) - set(SUPPORTED_FORMATS)
@@ -114,7 +116,7 @@ def main(args, do_error):
     db_loc = args.db_location or os.getenv(DB_LOC_VAR) or ".citegraph.sqlite"
 
     with PaperDb(bibdata=bibdata, dbfile=db_loc) as db:
-        params = Params(max_graph_size=args.size)
+        params = Params(max_graph_size=args.size, consider_upward_links=args.also_up)
         graph = create_graph(seeds=seeds, biblio=bibdata, params=params, db=db)
 
     renderer = None

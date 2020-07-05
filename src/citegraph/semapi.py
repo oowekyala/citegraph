@@ -4,7 +4,7 @@ from typing import Dict, Optional, List, Iterable
 import semanticscholar
 import requests.exceptions
 
-from citegraph.model import Biblio, PaperAndRefs, PaperId, Person,Paper
+from citegraph.model import *
 
 API_URL = 'http://api.semanticscholar.org/v1'
 
@@ -71,10 +71,10 @@ class PaperDb(object):
         if not with_refs:
             return self.bibdata.enrich(paper)
 
-        citations = [self.__paper_from_db(id[0], False)
-                     for id in c.execute(f"SELECT src FROM Citations WHERE dst=?", (paper_id,))]
-        references = [self.__paper_from_db(id[0], False)
-                      for id in c.execute(f"SELECT dst FROM Citations WHERE src=?", (paper_id,))]
+        citations = [Citation(self.__paper_from_db(id[0], False), bool(id[1]))
+                     for id in c.execute(f"SELECT src, influential FROM Citations WHERE dst=?", (paper_id,))]
+        references = [Citation(self.__paper_from_db(id[0], False), bool(id[1]))
+                      for id in c.execute(f"SELECT dst, influential FROM Citations WHERE src=?", (paper_id,))]
 
         c.close()
 

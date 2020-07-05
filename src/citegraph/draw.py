@@ -9,7 +9,7 @@ import yaml
 
 from citegraph.model import Biblio, Paper, Person, PaperAndRefs, PaperId
 
-UNKNOWN_PERSON = Person(string="Unknown von Nowhere")
+UNKNOWN_PERSON = Person(string="Unknown von Unknown")
 
 
 class GraphRenderer(object):
@@ -44,7 +44,7 @@ class Graph(object):
             succs = set([])
             self.successors[paper.id] = succs
 
-            for ref in paper.references:
+            for (ref, influential) in paper.references:
                 if ref.id in self.nodes:
                     succs.add(ref)
 
