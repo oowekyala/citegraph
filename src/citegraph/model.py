@@ -1,3 +1,4 @@
+import re
 from typing import NewType, List, Dict, NamedTuple
 
 import pybtex.database as bibtex
@@ -88,7 +89,7 @@ class Biblio(object):
     def __init__(self, bibdata: bibtex.BibliographyData):
         self.bibdata = bibdata
         self.by_norm_title: Dict[str, Paper] = {
-            paper.fields["title"].lower()
+            self._normalize_title(paper.fields["title"])
             : Paper(paper.fields,
                     paper.persons["author"],
                     id=paper.key,
@@ -98,6 +99,14 @@ class Biblio(object):
         self.id_to_bibkey = {}
 
 
+    @staticmethod
+    def _normalize_title(title: str):
+        title = title.lower()
+        title = re.sub("\\s*[-:]\\s*", "", title)  # delete some punctuation
+        title = re.sub("\\s{2,}", " ", title)  # normalize whitespace
+        return title
+
+
     def __contains__(self, paper: Paper):
         """
         Returns whether this bib file contains the given entry.
@@ -105,12 +114,13 @@ class Biblio(object):
         return paper.id and paper.id in self.id_to_bibkey \
                or paper.bibtex_id and paper.bibtex_id in self.bibdata.entries
 
+
     def __iter__(self):
         return iter(self.by_norm_title.values())
 
 
     def enrich(self, paper):
-        bibtex_entry = self.by_norm_title.get(paper.title.lower(), None)
+        bibtex_entry = self.by_norm_title.get(self._normalize_title(paper.title), None)
         if bibtex_entry:
             paper.bibtex_id = bibtex_entry.bibtex_id
             self.id_to_bibkey[paper.id] = bibtex_entry.bibtex_id
