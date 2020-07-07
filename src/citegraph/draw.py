@@ -111,22 +111,6 @@ class StylingInfo(object):
 
 
 
-def make_label(paper: Paper):
-
-    first_author: Person = next(iter(paper.authors), UNKNOWN_PERSON)
-
-    label = "<<B>%s" % html.escape(first_author.last_names[0])
-    if paper.year:
-        label += " (%s)" % paper.year
-
-    title = "\n".join(textwrap.wrap(paper.title, width=20))
-
-    label += "</B><BR/>" + html.escape(title).replace("\n", "<BR/>") + ">"
-
-    return label
-
-
-
 class DotGraphRenderer(GraphRenderer):
 
     def __init__(self,
@@ -152,7 +136,7 @@ class DotGraphRenderer(GraphRenderer):
     def add_node(self, paper: Paper):
 
         self.dot.node(name=paper.id,
-                      label=make_label(paper),
+                      label=DotGraphRenderer.make_label(paper),
                       **self.get_node_attributes(paper))
 
 
@@ -183,6 +167,21 @@ class DotGraphRenderer(GraphRenderer):
             self.dot.render(filename=filename, format=render_format, cleanup=True)
 
 
+    @staticmethod
+    def make_label(paper: Paper):
+
+        first_author: Person = next(iter(paper.authors), UNKNOWN_PERSON)
+
+        label = "<<B>%s" % html.escape(first_author.last_names[0])
+        if paper.year:
+            label += " (%s)" % paper.year
+
+        title = "\n".join(textwrap.wrap(paper.title, width=20))
+
+        label += "</B><BR/>" + html.escape(title).replace("\n", "<BR/>") + ">"
+
+        return label
+
 
 class GephiGraphRenderer(GraphRenderer):
 
@@ -199,8 +198,14 @@ class GephiGraphRenderer(GraphRenderer):
 
     def add_node(self, paper: Paper):
         self.nodes.append(
-            f"<node id='{paper.id}' label='{xml_escape(make_label(paper))}' />"
+            f"<node id='{paper.id}' label='{xml_escape(self.make_label(paper))}' />"
         )
+
+
+    def make_label(self, paper: Paper):
+        first_author: Person = next(iter(paper.authors), UNKNOWN_PERSON)
+
+        return f"{first_author.last_names[0]} ({paper.year}) {paper.title}"
 
 
     def add_edge(self, src: Paper, dst: Paper):
