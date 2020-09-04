@@ -15,10 +15,7 @@ def _tupled_sort(iterable: Iterable) -> Iterable:
     returns an iterable of tuples that doesn't include the key.
     """
     lst = sorted(iterable, key=lambda tup: tup[-1])
-    it = iter(lst)
-    while True:
-        elt = next(it)
-        yield elt[:-1]
+    return (elt[:-1] for elt in lst)
 
 class PaperDb(object):
     """
