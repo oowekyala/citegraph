@@ -94,7 +94,7 @@ class Biblio(object):
                     paper.persons["author"],
                     id=paper.key,
                     bibtex_id=paper.key)
-            for paper in bibdata.entries.itervalues()
+            for paper in bibdata.entries.values()
         }
         self.id_to_bibkey = {}
 
