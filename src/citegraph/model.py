@@ -12,6 +12,7 @@ Person = bibtex.Person
 PaperId = NewType("PaperId", str)
 
 
+
 class Paper(object):
 
     def __init__(self,
@@ -41,13 +42,16 @@ class Paper(object):
     def __hash__(self):
         return hash(self.id) if self.id else hash(self.title)
 
+
     def __str__(self):
         return f"{self.year} {self.title}"
+
 
 
 class Citation(NamedTuple):
     paper: Paper
     is_influential: bool
+
 
 
 class PaperAndRefs(Paper):
@@ -74,8 +78,10 @@ class PaperAndRefs(Paper):
     def out_degree(self):
         return len(self.references)
 
+
     def __hash__(self):
         return hash(id)
+
 
     def __eq__(self, other):
         return isinstance(other, Paper) and id == other.id
@@ -102,7 +108,7 @@ class Biblio(object):
     @staticmethod
     def _normalize_title(title: str):
         title = title.lower()
-        title = re.sub("\\s*[-:]\\s*", "", title)  # delete some punctuation
+        title = re.sub("[-:{}]", "", title)  # delete some punctuation
         title = re.sub("\\s{2,}", " ", title)  # normalize whitespace
         return title
 
