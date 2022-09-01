@@ -16,7 +16,7 @@ $ git clone https://github.com/oowekyala/citegraph.git && cd citegraph
 ```
 * Make sure you have all the required Python packages:
 ```shell script
-$ cat DEPENDENCIES | xargs pip3 install
+$ python3 -m pip install -r DEPENDENCIES
 ```
 * Add the `bin` directory to you PATH, or just use `bin/citegraph`
 
