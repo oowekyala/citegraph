@@ -10,6 +10,7 @@ This uses the semanticscholar API to fetch references for articles.
 ### Installation
 
 * Make sure you have Python 3.6+
+* Also make sure you have [Graphviz](https://www.graphviz.org/download/) on your path
 * Download or clone this repo
 ```shell script
 $ git clone https://github.com/oowekyala/citegraph.git && cd citegraph
