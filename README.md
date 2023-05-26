@@ -4,7 +4,13 @@
 Generates easily readable citation graphs. This uses the contents
 of a bibtex file to determine what you're interested in.
 
-This uses the semanticscholar API to fetch references for articles.
+This uses the semanticscholar API to fetch references for articles. 
+Since the API is rate-limited and requests are very slow, request
+results are cached locally, and the exploration algorithm is engineered
+to make every request count. This is done by computing a degree of interest (DOI)
+for each known paper, and fetching only the papers we think will 
+improve the graph the most. See [here](https://github.com/oowekyala/citegraph/blob/master/src/citegraph/explore.py#L10)
+for an explanation of the DOI calculation.
 
 
 ### Installation
