@@ -1,10 +1,11 @@
 import sqlite3
 from typing import Dict, Optional, List, Iterable
 
-import semanticscholar
+from semanticscholar import SemanticScholar as ScholarApi
+from semanticscholar.Paper import Paper as ApiPaper
 import requests.exceptions
 
-from citegraph.model import *
+from .model import *
 
 API_URL = 'http://api.semanticscholar.org/v1'
 
@@ -16,6 +17,7 @@ def _tupled_sort(iterable: Iterable) -> Iterable:
     """
     lst = sorted(iterable, key=lambda tup: tup[-1])
     return (elt[:-1] for elt in lst)
+
 
 class PaperDb(object):
     """
@@ -45,15 +47,15 @@ class PaperDb(object):
 
     """
 
-
     def __init__(self, bibdata: Biblio, dbfile: str):
         self.bibdata = bibdata
         self.dbfile = dbfile
         self.dbconn = None
         self.memcache = {}
-        self.idcache = {}     # external -> internal id
+        self.idcache: Dict[str, int] = {}  # external -> internal id
+        self.api = ScholarApi()
 
-    def __paper_from_db(self, internal_id: int, with_refs: bool):
+    def __paper_from_db(self, internal_id: int, with_refs: bool) -> PaperAndRefs:
         c = self.dbconn.cursor()
         c.execute("SELECT title, year, originalId FROM Papers WHERE id=?", (internal_id,))
         found = c.fetchone()
@@ -70,9 +72,11 @@ class PaperDb(object):
             return self.bibdata.enrich(paper)
 
         citations = [Citation(self.__paper_from_db(id[0], False), bool(id[1]))
-                     for id in c.execute(f"SELECT src, influential FROM Citations WHERE dst=?", (internal_id,))]
+                     for id in c.execute(f"SELECT src, influential FROM Citations WHERE dst=?",
+                                         (internal_id,))]
         references = [Citation(self.__paper_from_db(id[0], False), bool(id[1]))
-                      for id in c.execute(f"SELECT dst, influential FROM Citations WHERE src=?", (internal_id,))]
+                      for id in c.execute(f"SELECT dst, influential FROM Citations WHERE src=?",
+                                          (internal_id,))]
 
         c.close()
 
@@ -82,22 +86,21 @@ class PaperDb(object):
             references=references
         ))
 
-
     def __paper_from_db_wrapper(self, paper_id: PaperId, with_refs: bool):
         if len(paper_id) != 40:
             return None
         return self.__paper_from_db(internal_id=self._internalize_id(paper_id), with_refs=with_refs)
 
-
     def __is_resolved(self, internal_id: int) -> bool:
         self.cursor.execute("SELECT id FROM Resolved WHERE id=?", (internal_id,))
         return bool(self.cursor.fetchone())
 
-
     def __authors_from_db(self, internal_id: int) -> List[Person]:
-        return [Person(tup[0]) for tup in _tupled_sort(self.dbconn.execute("SELECT Authors.name, AuthorLinks.rank FROM Authors INNER JOIN AuthorLinks ON AuthorLinks.authorId = Authors.id WHERE AuthorLinks.paperId=?", (internal_id,)))]
+        return [Person(tup[0]) for tup in _tupled_sort(self.dbconn.execute(
+            "SELECT Authors.name, AuthorLinks.rank FROM Authors INNER JOIN AuthorLinks ON AuthorLinks.authorId = Authors.id WHERE AuthorLinks.paperId=?",
+            (internal_id,)))]
 
-    def __update_db(self, response) -> PaperAndRefs:
+    def __update_db(self, response: ApiPaper) -> PaperAndRefs:
 
         authors = {}
         authorship = set([])
@@ -106,24 +109,27 @@ class PaperDb(object):
 
         # todo handle missing authorId
 
-        def paper_update(dic):
-            id_ = dic["paperId"]
-            papers.append((self._internalize_id(id_), id_, dic["title"] or "", int(dic["year"] or 0)))
+        def paper_update(paper: ApiPaper):
+            id_ = paper.paperId
+            papers.append(
+                (self._internalize_id(id_), id_, paper.title or "", int(paper.year or 0)))
 
-        def author_update(dic, paper_id):
-            for i, author in enumerate(dic["authors"]):
+        def author_update(paper: ApiPaper, paper_id):
+            for i, author in enumerate(paper["authors"]):
                 author_id = author["authorId"]
                 authors[author_id] = author["name"]
                 authorship.add((paper_id, author_id, i))
 
-        internal_id = self._internalize_id(response["paperId"])
+        internal_id = self._internalize_id(response.paperId)
         paper_update(response)
         author_update(response, internal_id)
 
-        def cite_update(dict, is_references):
-            for ref in dict:
-                ref_id = self._internalize_id(ref["paperId"])
-                is_influential = ref["isInfluential"]
+        def cite_update(papers: List[ApiPaper], is_references):
+            for ref in papers:
+                if not ref.paperId:
+                    continue
+                ref_id = self._internalize_id(ref.paperId)
+                is_influential = ref.influentialCitationCount > 1  # todo fix that, used to be a field "is_influential"
                 if is_references:
                     cites.append((internal_id, ref_id, is_influential))
                 else:
@@ -131,8 +137,8 @@ class PaperDb(object):
                 author_update(ref, ref_id)
                 paper_update(ref)
 
-        cite_update(response["references"], True)
-        cite_update(response["citations"], False)
+        cite_update(response.references, True)
+        cite_update(response.citations, False)
 
         self.cursor.executemany("REPLACE INTO Papers VALUES (?,?,?,?)", papers)
         self.cursor.executemany("REPLACE INTO Citations VALUES (?,?,?)", cites)
@@ -149,7 +155,6 @@ class PaperDb(object):
         #                     citations=[self.bibdata.make_entry(ref) for ref in response["citations"]]
         #                     )
 
-
     def fetch_from_id(self, paper_id: PaperId) -> Optional[PaperAndRefs]:
         """Returns an entry a"""
         if paper_id in self.memcache:
@@ -160,8 +165,8 @@ class PaperDb(object):
             return found
 
         try:
-            paper_dict: Dict = semanticscholar.paper(paper_id)
-            error = len(paper_dict.keys()) == 0
+            paper: ApiPaper = self.api.get_paper(paper_id)
+            error = len(paper.keys()) == 0
         except requests.exceptions.RequestException as e:
             print(f"[ERROR] {str(e)}")
             error = True
@@ -169,15 +174,14 @@ class PaperDb(object):
         if error:
             result = None
         else:
-            result = self.__update_db(response=paper_dict)
-            result.id = paper_dict["paperId"]
+            result = self.__update_db(response=paper)
+            result.id = PaperId(paper.paperId)
             result = result
 
         self.memcache[paper_id] = result
         return result
 
-
-    def _internalize_id(self, id):
+    def _internalize_id(self, id: str) -> int:
         # Turn a 40 digit hex ID (160 bits) into a 32 bit int
         # This is a big deal to make the DB smaller
         # todo there's no collision detection
@@ -200,7 +204,8 @@ class PaperDb(object):
         self.dbconn = sqlite3.connect(self.dbfile)
         self.cursor = self.dbconn.cursor()
 
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS Papers (id INTEGER PRIMARY KEY, originalId VARCHAR, title VARCHAR, year INTEGER);")
+        self.cursor.execute(
+            "CREATE TABLE IF NOT EXISTS Papers (id INTEGER PRIMARY KEY, originalId VARCHAR, title VARCHAR, year INTEGER);")
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS Resolved (id INTEGER PRIMARY KEY, resolved BOOL,
                                    FOREIGN KEY (id) REFERENCES Papers(id));
@@ -211,7 +216,8 @@ class PaperDb(object):
                                    FOREIGN KEY (dst) REFERENCES Papers(id),
                                    PRIMARY KEY (src, dst));
         """)
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS Authors (id INTEGER PRIMARY KEY, name VARCHAR);")
+        self.cursor.execute(
+            "CREATE TABLE IF NOT EXISTS Authors (id INTEGER PRIMARY KEY, name VARCHAR);")
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS AuthorLinks (paperId INTEGER, authorId INTEGER, rank INTEGER,
                                    FOREIGN KEY (paperId) REFERENCES Papers(id),
@@ -222,11 +228,9 @@ class PaperDb(object):
         self.dbconn.commit()
         return self
 
-
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.dbconn.commit()
         self.dbconn.close()
         if exc_val:
             raise exc_val
         return self
-
