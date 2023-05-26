@@ -1,5 +1,5 @@
 graphviz
 pybtex
 requests
-semanticscholar
+semanticscholar == 0.4.1
 
